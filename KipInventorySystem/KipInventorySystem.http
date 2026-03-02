@@ -1,0 +1,6 @@
+@KipInventorySystem_HostAddress = http://localhost:5127
+
+GET {{KipInventorySystem_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
