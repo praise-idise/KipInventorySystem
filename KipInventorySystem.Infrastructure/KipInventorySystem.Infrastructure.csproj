@@ -3,6 +3,14 @@
 
 
   <ItemGroup>
+    <Compile Remove="Repository\**" />
+    <EmbeddedResource Remove="Repository\**" />
+    <None Remove="Repository\**" />
+  </ItemGroup>
+
+
+
+  <ItemGroup>
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
     <PackageReference Include="AspNetCore.HealthChecks.Redis" />
     <PackageReference Include="CloudinaryDotNet" />
@@ -29,12 +37,6 @@
     <ProjectReference Include="..\KipInventorySystem.Application\KipInventorySystem.Application.csproj" />
     <ProjectReference Include="..\KipInventorySystem.Domain\KipInventorySystem.Domain.csproj" />
     <ProjectReference Include="..\KipInventorySystem.Shared\KipInventorySystem.Shared.csproj" />
-  </ItemGroup>
-
-
-
-  <ItemGroup>
-    <Folder Include="Repository\" />
   </ItemGroup>
 
 </Project>
