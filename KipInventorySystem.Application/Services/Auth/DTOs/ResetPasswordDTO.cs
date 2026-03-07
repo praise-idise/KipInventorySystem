@@ -1,4 +1,15 @@
-﻿namespace KipInventorySystem.Application.Services.Auth.DTOs;
+using System.ComponentModel;
 
-public record ResetPasswordDTO(string Email, string Token, string NewPassword);
+namespace KipInventorySystem.Application.Services.Auth.DTOs;
 
+public class ResetPasswordDTO
+{
+    [DefaultValue("admin@example.com")]
+    public string Email { get; set; } = string.Empty;
+
+    [DefaultValue("CfDJ8KpR6fQ0...sample-token")]
+    public string Token { get; set; } = string.Empty;
+
+    [DefaultValue("AdminUser1234$")]
+    public string NewPassword { get; set; } = string.Empty;
+}

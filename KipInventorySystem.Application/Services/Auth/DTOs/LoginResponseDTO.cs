@@ -1,4 +1,4 @@
-﻿namespace KipInventorySystem.Application.Services.Auth.DTOs;
+namespace KipInventorySystem.Application.Services.Auth.DTOs;
 
 public class LoginResponseDTO
 {

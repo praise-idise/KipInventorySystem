@@ -11,6 +11,9 @@ public class RedisService(IConnectionMultiplexer redis)
     public async Task SetAsync(string key, string value, TimeSpan? expiry = null)
         => await _db.StringSetAsync(key, value, expiry);
 
+    public async Task<bool> SetIfNotExistsAsync(string key, string value, TimeSpan expiry)
+        => await _db.StringSetAsync(key, value, expiry, when: When.NotExists);
+
     public async Task<string?> GetAsync(string key)
         => await _db.StringGetAsync(key);
 

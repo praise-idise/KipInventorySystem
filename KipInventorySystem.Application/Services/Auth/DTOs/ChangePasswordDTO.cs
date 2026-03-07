@@ -1,3 +1,12 @@
-﻿namespace KipInventorySystem.Application.Services.Auth.DTOs;
+using System.ComponentModel;
 
-public record ChangePasswordDTO(string CurrentPassword,string NewPassword);
+namespace KipInventorySystem.Application.Services.Auth.DTOs;
+
+public class ChangePasswordDTO
+{
+    [DefaultValue("Currentpassword123$")]
+    public string CurrentPassword { get; set; } = string.Empty;
+
+    [DefaultValue("Newpassword123$")]
+    public string NewPassword { get; set; } = string.Empty;
+}

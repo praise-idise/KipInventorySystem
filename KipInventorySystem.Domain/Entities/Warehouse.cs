@@ -16,6 +16,9 @@ public class Warehouse : BaseEntity
     [MaxLength(150)]
     public string Name { get; set; } = string.Empty;
 
+    [MaxLength(100)]
+    public string State { get; set; } = string.Empty;
+
     [MaxLength(250)]
     public string? Location { get; set; }
 

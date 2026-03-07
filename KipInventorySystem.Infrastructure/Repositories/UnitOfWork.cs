@@ -1,6 +1,8 @@
 using KipInventorySystem.Domain.Interfaces;
 using KipInventorySystem.Infrastructure.Persistence;
+using System.Data;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore;
 
 namespace KipInventorySystem.Infrastructure.Repositories;
 
@@ -30,9 +32,14 @@ internal class UnitOfWork(ApplicationDbContext context) : IUnitOfWork
         return await _context.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task BeginTransactionAsync(CancellationToken cancellationToken = default)
+    public async Task BeginTransactionAsync(
+        IsolationLevel isolationLevel = IsolationLevel.ReadCommitted,
+        CancellationToken cancellationToken = default)
     {
-        _transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        await _context.Database.OpenConnectionAsync(cancellationToken);
+        var dbTransaction = await _context.Database.GetDbConnection()
+            .BeginTransactionAsync(isolationLevel, cancellationToken);
+        _transaction = await _context.Database.UseTransactionAsync(dbTransaction, cancellationToken);
     }
 
     public async Task CommitTransactionAsync(CancellationToken cancellationToken = default)

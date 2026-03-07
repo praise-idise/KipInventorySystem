@@ -1,0 +1,138 @@
+using Hangfire;
+using KipInventorySystem.Application.Services.Inventory.Common;
+using KipInventorySystem.Application.Services.Inventory.StockIssues.DTOs;
+using KipInventorySystem.Domain.Entities;
+using KipInventorySystem.Domain.Enums;
+using KipInventorySystem.Domain.Interfaces;
+using KipInventorySystem.Shared.Interfaces;
+using KipInventorySystem.Shared.Responses;
+using Microsoft.Extensions.Logging;
+
+namespace KipInventorySystem.Application.Services.Inventory.StockIssues;
+
+public class StockIssueService(
+    IUnitOfWork unitOfWork,
+    IInventoryTransactionRunner transactionRunner,
+    IIdempotencyService idempotencyService,
+    IUserContext userContext,
+    ILogger<StockIssueService> logger) : IStockIssueService
+{
+    public async Task<ServiceResponse<StockIssueResultDto>> IssueAsync(
+        CreateStockIssueRequest request,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        var affectedProductIds = new HashSet<Guid>();
+
+        var response = await idempotencyService.ExecuteAsync<CreateStockIssueRequest, StockIssueResultDto>(
+            "stock-issue-create",
+            idempotencyKey,
+            request,
+            token => transactionRunner.ExecuteSerializableAsync("stockIssue.create", async _ =>
+            {
+                var warehouseRepo = unitOfWork.Repository<Warehouse>();
+                var productRepo = unitOfWork.Repository<Product>();
+                var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
+                var movementRepo = unitOfWork.Repository<StockMovement>();
+
+                var warehouse = await warehouseRepo.GetByIdAsync(request.WarehouseId, token);
+                if (warehouse is null)
+                {
+                    return ServiceResponse<StockIssueResultDto>.BadRequest("Warehouse was not found.");
+                }
+
+                if (request.Lines.GroupBy(x => x.ProductId).Any(x => x.Count() > 1))
+                {
+                    return ServiceResponse<StockIssueResultDto>.BadRequest("Duplicate products are not allowed in a stock issue request.");
+                }
+
+                foreach (var line in request.Lines)
+                {
+                    var product = await productRepo.GetByIdAsync(line.ProductId, token);
+                    if (product is null)
+                    {
+                        return ServiceResponse<StockIssueResultDto>.BadRequest($"Product '{line.ProductId}' was not found.");
+                    }
+                }
+
+                var movements = new List<StockMovement>();
+                var lineResults = new List<StockIssueLineResultDto>();
+
+                foreach (var line in request.Lines)
+                {
+                    var inventory = await inventoryRepo.FindAsync(
+                        x => x.WarehouseId == request.WarehouseId && x.ProductId == line.ProductId,
+                        token);
+
+                    if (inventory is null)
+                    {
+                        return ServiceResponse<StockIssueResultDto>.Conflict(
+                            $"No inventory record exists for product '{line.ProductId}' in warehouse '{request.WarehouseId}'.");
+                    }
+
+                    if (inventory.AvailableQuantity < line.Quantity)
+                    {
+                        return ServiceResponse<StockIssueResultDto>.Conflict(
+                            $"Insufficient available stock for product '{line.ProductId}'. Available={inventory.AvailableQuantity}, requested={line.Quantity}.");
+                    }
+
+                    inventory.QuantityOnHand -= line.Quantity;
+                    inventory.UpdatedAt = DateTime.UtcNow;
+                    inventoryRepo.Update(inventory);
+                    affectedProductIds.Add(line.ProductId);
+
+                    var movement = new StockMovement
+                    {
+                        ProductId = line.ProductId,
+                        WarehouseId = request.WarehouseId,
+                        MovementType = StockMovementType.Issue,
+                        Quantity = line.Quantity,
+                        OccurredAt = DateTime.UtcNow,
+                        ReferenceType = request.ReferenceType,
+                        ReferenceId = request.ReferenceId,
+                        Notes = request.Notes,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+
+                    movements.Add(movement);
+                    lineResults.Add(new StockIssueLineResultDto
+                    {
+                        ProductId = line.ProductId,
+                        Quantity = line.Quantity,
+                        StockMovementId = movement.StockMovementId
+                    });
+                }
+
+                await movementRepo.AddRangeAsync(movements, token);
+
+                logger.LogInformation(
+                    "Inventory audit: operation={Operation}, actor={Actor}, entity=StockIssue, warehouseId={WarehouseId}, movementCount={MovementCount}, referenceType={ReferenceType}, referenceId={ReferenceId}",
+                    "CreateStockIssue",
+                    userContext.GetCurrentUser().UserId,
+                    request.WarehouseId,
+                    movements.Count,
+                    request.ReferenceType,
+                    request.ReferenceId);
+
+                return ServiceResponse<StockIssueResultDto>.Success(new StockIssueResultDto
+                {
+                    WarehouseId = request.WarehouseId,
+                    Lines = lineResults
+                }, "Stock issue completed.");
+            }, token),
+            cancellationToken);
+
+        if (response.Succeeded)
+        {
+            foreach (var productId in affectedProductIds)
+            {
+                BackgroundJob.Enqueue<ILowStockBackgroundJobs>(
+                    "default",
+                    jobs => jobs.EvaluateLowStockAsync(request.WarehouseId, productId, default));
+            }
+        }
+
+        return response;
+    }
+}

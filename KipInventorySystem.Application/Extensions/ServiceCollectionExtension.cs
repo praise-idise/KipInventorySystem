@@ -1,5 +1,14 @@
 using KipInventorySystem.Application.Services.Auth;
 using KipInventorySystem.Application.Services.Email;
+using KipInventorySystem.Application.Services.Inventory.Common;
+using KipInventorySystem.Application.Services.Inventory.GoodsReceipts;
+using KipInventorySystem.Application.Services.Inventory.Products;
+using KipInventorySystem.Application.Services.Inventory.PurchaseOrders;
+using KipInventorySystem.Application.Services.Inventory.StockAdjustments;
+using KipInventorySystem.Application.Services.Inventory.StockIssues;
+using KipInventorySystem.Application.Services.Inventory.Suppliers;
+using KipInventorySystem.Application.Services.Inventory.TransferRequests;
+using KipInventorySystem.Application.Services.Inventory.Warehouses;
 using KipInventorySystem.Application.Validators.Auth;
 using KipInventorySystem.Shared.Interfaces;
 using KipInventorySystem.Shared.Services;
@@ -24,6 +33,17 @@ public static class ServiceCollectionExtension
 
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IEmailBackgroundJobs, EmailBackgroundJobs>();
+        services.AddScoped<IProductService, ProductService>();
+        services.AddScoped<IWarehouseService, WarehouseService>();
+        services.AddScoped<IInventorySupplierService, InventorySupplierService>();
+        services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
+        services.AddScoped<IGoodsReceiptService, GoodsReceiptService>();
+        services.AddScoped<IStockIssueService, StockIssueService>();
+        services.AddScoped<ITransferRequestService, TransferRequestService>();
+        services.AddScoped<IStockAdjustmentService, StockAdjustmentService>();
+        services.AddScoped<IIdempotencyService, IdempotencyService>();
+        services.AddSingleton<IDocumentNumberGenerator, DocumentNumberGenerator>();
+        services.AddScoped<ILowStockBackgroundJobs, LowStockBackgroundJobs>();
         services.AddHttpContextAccessor();
         services.AddScoped<IUserContext, UserContext>();
 

@@ -10,6 +10,7 @@
     <PackageVersion Include="CloudinaryDotNet" Version="1.28.0" />
     <PackageVersion Include="FluentValidation.AspNetCore" Version="11.3.1" />
     <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.23" />
+    <PackageVersion Include="MimeKit" Version="4.15.1" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageVersion Include="Hangfire.Dashboard.Basic.Authentication" Version="8.0.0" />
     <PackageVersion Include="Hangfire.PostgreSql" Version="1.21.1" />

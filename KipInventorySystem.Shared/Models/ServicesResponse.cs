@@ -24,6 +24,9 @@ public class ServiceResponse : ServiceResponseBase
 
     public static ServiceResponse NotFound(string Message)
         => NotFound<ServiceResponse>(Message);
+
+    public static ServiceResponse Conflict(string Message)
+        => Conflict<ServiceResponse>(Message);
 }
 
 public class ServiceResponse<T> : ServiceResponseBase

@@ -1,5 +1,6 @@
 using KipInventorySystem.Application.Services.Email;
 using KipInventorySystem.Application.Services.FilesUpload;
+using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Application.Services.Payment;
 using KipInventorySystem.Application.Services.Redis;
 using KipInventorySystem.Domain.Entities;
@@ -11,6 +12,7 @@ using KipInventorySystem.Infrastructure.Integrations.Redis;
 using KipInventorySystem.Infrastructure.Integrations.Stripe;
 using KipInventorySystem.Infrastructure.Persistence;
 using KipInventorySystem.Infrastructure.Repositories;
+using KipInventorySystem.Infrastructure.Services.Inventory;
 using KipInventorySystem.Infrastructure.Seeder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +35,7 @@ public static class ServicesCollectionExtensions
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped(typeof(IBaseRepository<>), typeof(BaseRepository<>));
+        services.AddScoped<IInventoryTransactionRunner, InventoryTransactionRunner>();
 
         services.AddIdentityCore<ApplicationUser>(options =>
         {

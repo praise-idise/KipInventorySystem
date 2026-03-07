@@ -48,4 +48,25 @@ public abstract class BaseController : ControllerBase
 
         return null!;
     }
+
+    protected bool TryGetIdempotencyKey(out string idempotencyKey, out IActionResult? errorResult)
+    {
+        idempotencyKey = string.Empty;
+        errorResult = null;
+
+        if (!Request.Headers.TryGetValue("X-Idempotency-Key", out var values))
+        {
+            errorResult = ComputeResponse(ServiceResponse.BadRequest("X-Idempotency-Key header is required."));
+            return false;
+        }
+
+        idempotencyKey = values.ToString().Trim();
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            errorResult = ComputeResponse(ServiceResponse.BadRequest("X-Idempotency-Key header cannot be empty."));
+            return false;
+        }
+
+        return true;
+    }
 }

@@ -1,30 +1,29 @@
 # Global Query Filters
 
-## ✅ Already Implemented
+## Already Implemented
 
 All entities inheriting from `BaseEntity` automatically filter:
 - `IsDeleted = false`
-- `IsActive = true`
 
 ## Usage
 
 ### Normal Queries (Auto-filtered)
 ```csharp
 var products = await _unitOfWork.Repository<Product>().GetAllAsync();
-// Returns: IsDeleted = false AND IsActive = true
+// Returns only records where IsDeleted = false
 ```
 
-### Include Deleted/Inactive
+### Include Deleted
 ```csharp
-// Get all (including deleted/inactive)
+// Get all (including deleted)
 var all = await _unitOfWork.Repository<Product>().GetAllIncludingDeletedAsync();
 
-// Get by ID (including deleted/inactive)
+// Get by ID (including deleted)
 var product = await _unitOfWork.Repository<Product>().GetByIdIncludingDeletedAsync(id);
 
-// Query with filter (including deleted/inactive)
-var inactive = await _unitOfWork.Repository<Product>()
-    .WhereIncludingDeletedAsync(p => !p.IsActive);
+// Query with filter (including deleted)
+var deleted = await _unitOfWork.Repository<Product>()
+    .WhereIncludingDeletedAsync(p => p.IsDeleted);
 ```
 
 ### Raw DbContext
@@ -47,18 +46,8 @@ public async Task DeleteProductAsync(Guid productId)
 }
 ```
 
-## Modify Filter (ApplicationDbContext)
-
-**Filter only `IsDeleted`:**
+## Current Filter (ApplicationDbContext)
 ```csharp
 var notDeleted = Expression.Not(isDeletedProperty);
 var lambda = Expression.Lambda(notDeleted, parameter);
-```
-
-**Filter `IsDeleted` AND `IsActive`:**
-```csharp
-var notDeleted = Expression.Not(isDeletedProperty);
-var isActive = isActiveProperty;
-var combined = Expression.AndAlso(notDeleted, isActive);
-var lambda = Expression.Lambda(combined, parameter);
 ```
