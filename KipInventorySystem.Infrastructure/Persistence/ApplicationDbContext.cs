@@ -10,6 +10,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 {
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<WarehouseCodeCounter> WarehouseCodeCounters => Set<WarehouseCodeCounter>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<WarehouseInventory> WarehouseInventories => Set<WarehouseInventory>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
@@ -25,6 +26,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.HasPostgresExtension("citext");
         ConfigureInventoryModel(modelBuilder);
 
         // Apply global query filter for soft delete.
@@ -51,6 +53,19 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         modelBuilder.Entity<Warehouse>()
             .HasIndex(e => e.Code)
             .IsUnique();
+
+        modelBuilder.Entity<Warehouse>()
+            .Property(e => e.Name)
+            .HasColumnType("citext");
+
+        modelBuilder.Entity<Warehouse>()
+            .HasIndex(e => e.Name)
+            .HasFilter("\"IsDeleted\" = false")
+            .IsUnique();
+
+        modelBuilder.Entity<WarehouseCodeCounter>()
+            .Property(e => e.StateCode)
+            .HasMaxLength(3);
 
         modelBuilder.Entity<Product>()
             .HasIndex(e => e.Sku)

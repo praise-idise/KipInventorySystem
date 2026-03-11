@@ -27,6 +27,9 @@ public class ServiceResponse : ServiceResponseBase
 
     public static ServiceResponse Conflict(string Message)
         => Conflict<ServiceResponse>(Message);
+
+    public static ServiceResponse Unavailable(string Message)
+        => Unavailable<ServiceResponse>(Message);
 }
 
 public class ServiceResponse<T> : ServiceResponseBase
@@ -61,6 +64,9 @@ public class ServiceResponse<T> : ServiceResponseBase
 
     public static ServiceResponse<T> Forbidden(string Message)
         => Forbidden<ServiceResponse<T>>(Message);
+
+    public static ServiceResponse<T> Unavailable(string Message)
+        => Unavailable<ServiceResponse<T>>(Message);
 
     public static ServiceResponse<T> Error(string Message)
         => Error<ServiceResponse<T>>(Message);
@@ -99,6 +105,9 @@ public class ServiceResponseBase
 
     public static T Forbidden<T>(string Message) where T : ServiceResponseBase, new()
         => CreateResponse<T>(HttpStatusCode.Forbidden, Message);
+
+    public static T Unavailable<T>(string Message) where T : ServiceResponseBase, new()
+        => CreateResponse<T>(HttpStatusCode.ServiceUnavailable, Message);
 
     public static T Error<T>(string Message) where T : ServiceResponseBase, new()
         => CreateResponse<T>(HttpStatusCode.InternalServerError, Message);

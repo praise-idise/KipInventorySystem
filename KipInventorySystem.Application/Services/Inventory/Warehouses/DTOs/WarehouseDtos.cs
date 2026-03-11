@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 
 namespace KipInventorySystem.Application.Services.Inventory.Warehouses.DTOs;
 
@@ -8,6 +9,7 @@ public class CreateWarehouseRequest
     public string Name { get; set; } = string.Empty;
 
     [DefaultValue("Lagos")]
+    [MinLength(3)]
     public string State { get; set; } = string.Empty;
 
     [DefaultValue("Ikeja, Lagos")]
@@ -21,6 +23,10 @@ public class UpdateWarehouseRequest
 {
     [DefaultValue("Lagos Central Warehouse")]
     public string? Name { get; set; }
+
+    [DefaultValue("Abuja")]
+    [MinLength(3)]
+    public string? State { get; set; }
 
     [DefaultValue("Ikeja, Lagos")]
     public string? Location { get; set; }

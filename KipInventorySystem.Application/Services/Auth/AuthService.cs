@@ -92,7 +92,17 @@ public class AuthService(
 
         var accessToken = await GenerateJwtToken(user);
 
-        var sessionId = await CreateSessionAsync(user);
+        string sessionId;
+        try
+        {
+            sessionId = await CreateSessionAsync(user);
+        }
+        catch (RedisUnavailableException ex)
+        {
+            logger.LogError(ex, "Redis unavailable while creating login session for user {UserId}", user.Id);
+            return ServiceResponse<LoginResponseDTO>.Unavailable(
+                "Authentication service is temporarily unavailable. Please try again shortly.");
+        }
 
         logger.LogInformation(
             "User {UserId} logged in. Session {SessionId}",
@@ -114,49 +124,58 @@ public class AuthService(
         if (string.IsNullOrEmpty(refreshToken))
             return ServiceResponse<LoginResponseDTO>.Unauthorized("Missing refresh token");
 
-        var refreshKey = $"auth:refresh:{refreshToken}";
-        var sessionId = await redis.GetAsync(refreshKey);
-
-        if (sessionId == null)
-            return ServiceResponse<LoginResponseDTO>.Unauthorized("Invalid refresh token");
-
-        var sessionJson = await redis.GetAsync($"auth:session:{sessionId}");
-        if (sessionJson == null)
-            return ServiceResponse<LoginResponseDTO>.Unauthorized("Session expired");
-
-        var session = JsonSerializer.Deserialize<UserSession>(sessionJson)!;
-
-        var user = await userManager.FindByIdAsync(session.UserId);
-        if (user == null)
-            return ServiceResponse<LoginResponseDTO>.Unauthorized("User not found");
-
-        if (session.TokenVersion != user.TokenVersion)
+        try
         {
+            var refreshKey = $"auth:refresh:{refreshToken}";
+            var sessionId = await redis.GetAsync(refreshKey);
+
+            if (sessionId == null)
+                return ServiceResponse<LoginResponseDTO>.Unauthorized("Invalid refresh token");
+
+            var sessionJson = await redis.GetAsync($"auth:session:{sessionId}");
+            if (sessionJson == null)
+                return ServiceResponse<LoginResponseDTO>.Unauthorized("Session expired");
+
+            var session = JsonSerializer.Deserialize<UserSession>(sessionJson)!;
+
+            var user = await userManager.FindByIdAsync(session.UserId);
+            if (user == null)
+                return ServiceResponse<LoginResponseDTO>.Unauthorized("User not found");
+
+            if (session.TokenVersion != user.TokenVersion)
+            {
+                await redis.RemoveAsync(refreshKey);
+                return ServiceResponse<LoginResponseDTO>.Unauthorized("Session revoked");
+            }
+
+
+            // REFRESH TOKEN ROTATION
             await redis.RemoveAsync(refreshKey);
-            return ServiceResponse<LoginResponseDTO>.Unauthorized("Session revoked");
+
+            var newRefreshToken = GenerateRefreshToken();
+            var newRefreshKey = $"auth:refresh:{newRefreshToken}";
+            var expiry = session.ExpiresAt - DateTime.UtcNow;
+
+            await redis.SetAsync(newRefreshKey, sessionId, expiry);
+            userContext.SetCookie("refresh_token", newRefreshToken, session.ExpiresAt);
+
+            var newAccessToken = await GenerateJwtToken(user);
+
+            return ServiceResponse<LoginResponseDTO>.Success(new LoginResponseDTO
+            {
+                Token = newAccessToken,
+                ExpiresAt = DateTime.UtcNow.AddMinutes(jwtOptions.Value.ExpirationMinutes),
+                Email = user.Email!,
+                UserId = user.Id,
+                Roles = await userManager.GetRolesAsync(user)
+            });
         }
-
-
-        // REFRESH TOKEN ROTATION
-        await redis.RemoveAsync(refreshKey);
-
-        var newRefreshToken = GenerateRefreshToken();
-        var newRefreshKey = $"auth:refresh:{newRefreshToken}";
-        var expiry = session.ExpiresAt - DateTime.UtcNow;
-
-        await redis.SetAsync(newRefreshKey, sessionId, expiry);
-        userContext.SetCookie("refresh_token", newRefreshToken, session.ExpiresAt);
-
-        var newAccessToken = await GenerateJwtToken(user);
-
-        return ServiceResponse<LoginResponseDTO>.Success(new LoginResponseDTO
+        catch (RedisUnavailableException ex)
         {
-            Token = newAccessToken,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(jwtOptions.Value.ExpirationMinutes),
-            Email = user.Email!,
-            UserId = user.Id,
-            Roles = await userManager.GetRolesAsync(user)
-        });
+            logger.LogError(ex, "Redis unavailable while refreshing auth session");
+            return ServiceResponse<LoginResponseDTO>.Unavailable(
+                "Authentication service is temporarily unavailable. Please try again shortly.");
+        }
     }
 
 
@@ -170,25 +189,34 @@ public class AuthService(
             return ServiceResponse.Success("Logged out successfully");
         }
 
-        var sessionId = await redis.GetAsync($"auth:refresh:{refreshToken}");
-        if (sessionId == null) return ServiceResponse.NotFound("Session not found");
-
-        var sessionJson = await redis.GetAsync($"auth:session:{sessionId}");
-        if (sessionJson != null)
+        try
         {
-            var session = JsonSerializer.Deserialize<UserSession>(sessionJson)!;
-            await redis.RemoveFromSetAsync(
-                $"auth:user-sessions:{session.UserId}",
-                sessionId);
+            var sessionId = await redis.GetAsync($"auth:refresh:{refreshToken}");
+            if (sessionId == null) return ServiceResponse.NotFound("Session not found");
+
+            var sessionJson = await redis.GetAsync($"auth:session:{sessionId}");
+            if (sessionJson != null)
+            {
+                var session = JsonSerializer.Deserialize<UserSession>(sessionJson)!;
+                await redis.RemoveFromSetAsync(
+                    $"auth:user-sessions:{session.UserId}",
+                    sessionId);
+            }
+
+            await redis.RemoveAsync($"auth:session:{sessionId}");
+            await redis.RemoveAsync($"auth:refresh:{refreshToken}");
+
+            userContext.DeleteCookie("refresh_token");
+
+            logger.LogInformation("Session {SessionId} logged out", sessionId);
+            return ServiceResponse.Success("Logged out successfully");
         }
-
-        await redis.RemoveAsync($"auth:session:{sessionId}");
-        await redis.RemoveAsync($"auth:refresh:{refreshToken}");
-
-        userContext.DeleteCookie("refresh_token");
-
-        logger.LogInformation("Session {SessionId} logged out", sessionId);
-        return ServiceResponse.Success("Logged out successfully");
+        catch (RedisUnavailableException ex)
+        {
+            logger.LogError(ex, "Redis unavailable while logging out current session");
+            return ServiceResponse.Unavailable(
+                "Authentication service is temporarily unavailable. Please try again shortly.");
+        }
     }
 
     public async Task<ServiceResponse> RevokeUserSessionsAsync(string userId)
@@ -199,17 +227,26 @@ public class AuthService(
         user.TokenVersion++;
         await userManager.UpdateAsync(user);
 
-        var sessionIds = await redis.GetSetMembersAsync($"auth:user-sessions:{userId}");
-
-        foreach (var sessionId in sessionIds)
+        try
         {
-            await redis.RemoveAsync($"auth:session:{sessionId}");
+            var sessionIds = await redis.GetSetMembersAsync($"auth:user-sessions:{userId}");
+
+            foreach (var sessionId in sessionIds)
+            {
+                await redis.RemoveAsync($"auth:session:{sessionId}");
+            }
+
+            await redis.RemoveAsync($"auth:user-sessions:{userId}");
+
+            logger.LogWarning("All sessions revoked for user {UserId}", userId);
+            return ServiceResponse.Success("All sessions revoked");
         }
-
-        await redis.RemoveAsync($"auth:user-sessions:{userId}");
-
-        logger.LogWarning("All sessions revoked for user {UserId}", userId);
-        return ServiceResponse.Success("All sessions revoked");
+        catch (RedisUnavailableException ex)
+        {
+            logger.LogError(ex, "Redis unavailable while revoking sessions for user {UserId}", userId);
+            return ServiceResponse.Unavailable(
+                "Authentication service is temporarily unavailable. Please try again shortly.");
+        }
     }
 
     public async Task<ServiceResponse> ChangePasswordAsync(ChangePasswordDTO model)
@@ -232,7 +269,9 @@ public class AuthService(
                 string.Join(", ", result.Errors.Select(e => e.Description)));
 
         // Invalidate all sessions
-        await RevokeUserSessionsAsync(user.Id);
+        var revokeSessionsResponse = await RevokeUserSessionsAsync(user.Id);
+        if (!revokeSessionsResponse.Succeeded)
+            return revokeSessionsResponse;
 
         logger.LogInformation("Password changed for user {UserId}", user.Id);
 
@@ -306,7 +345,9 @@ public class AuthService(
                 string.Join(", ", result.Errors.Select(e => e.Description)));
 
         // Invalidate all sessions
-        await RevokeUserSessionsAsync(user.Id);
+        var revokeSessionsResponse = await RevokeUserSessionsAsync(user.Id);
+        if (!revokeSessionsResponse.Succeeded)
+            return revokeSessionsResponse;
 
         logger.LogWarning("Password reset for user {UserId}", user.Id);
 

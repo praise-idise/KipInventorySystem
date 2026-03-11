@@ -31,7 +31,7 @@ public static class ServicesCollectionExtensions
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("DefaultConnection string is missing.")));
         services.AddHealthChecks().AddNpgSql(configuration.GetConnectionString("DefaultConnection")!,
         name: "PostgreSQL",
-        failureStatus: HealthStatus.Degraded);
+        failureStatus: HealthStatus.Unhealthy);
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped(typeof(IBaseRepository<>), typeof(BaseRepository<>));
@@ -53,7 +53,7 @@ public static class ServicesCollectionExtensions
 
         services.AddHealthChecks().AddRedis(configuration.GetConnectionString("Redis")!,
         name: "Redis",
-        failureStatus: HealthStatus.Degraded
+        failureStatus: HealthStatus.Unhealthy
         );
         services.AddScoped<IRedisService, RedisService>();
 

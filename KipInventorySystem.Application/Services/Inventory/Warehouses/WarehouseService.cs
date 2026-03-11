@@ -7,6 +7,7 @@ using KipInventorySystem.Shared.Responses;
 using MapsterMapper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Data;
 
 namespace KipInventorySystem.Application.Services.Inventory.Warehouses;
 
@@ -23,19 +24,36 @@ public class WarehouseService(
         CancellationToken cancellationToken = default)
     {
         var warehouseRepo = unitOfWork.Repository<Warehouse>();
+        var counterRepo = unitOfWork.Repository<WarehouseCodeCounter>();
+        var normalizedName = request.Name.Trim();
 
-         // Attempt to create the warehouse with a unique code, retrying if a collision occurs
+        if (await WarehouseNameExistsAsync(warehouseRepo, normalizedName, cancellationToken))
+        {
+            return ServiceResponse<WarehouseDto>.Conflict(
+                $"A warehouse with name '{normalizedName}' already exists.");
+        }
+
         for (var attempt = 1; attempt <= MaxCreateAttempts; attempt++)
         {
-            var warehouse = mapper.Map<Warehouse>(request);
-            warehouse.Code = await GenerateNextWarehouseCodeAsync(warehouseRepo, warehouse.State, cancellationToken);
-            warehouse.CreatedAt = DateTime.UtcNow;
-            warehouse.UpdatedAt = DateTime.UtcNow;
-
             try
             {
+                await unitOfWork.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+
+                if (await WarehouseNameExistsAsync(warehouseRepo, normalizedName, cancellationToken))
+                {
+                    await unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    return ServiceResponse<WarehouseDto>.Conflict(
+                        $"A warehouse with name '{normalizedName}' already exists.");
+                }
+
+                var warehouse = mapper.Map<Warehouse>(request);
+                warehouse.Code = await GenerateNextWarehouseCodeAsync(counterRepo, warehouse.State, cancellationToken);
+                warehouse.CreatedAt = DateTime.UtcNow;
+                warehouse.UpdatedAt = DateTime.UtcNow;
+
                 await warehouseRepo.AddAsync(warehouse, cancellationToken);
                 await unitOfWork.SaveChangesAsync(cancellationToken);
+                await unitOfWork.CommitTransactionAsync(cancellationToken);
 
                 logger.LogInformation(
                     "Inventory audit: operation={Operation}, actor={Actor}, entity=Warehouse, entityId={EntityId}",
@@ -43,23 +61,34 @@ public class WarehouseService(
                     userContext.GetCurrentUser().UserId,
                     warehouse.WarehouseId);
 
-                return ServiceResponse<WarehouseDto>.Created(
-                    mapper.Map<WarehouseDto>(warehouse),
-                    "Warehouse created successfully.");
+                return ServiceResponse<WarehouseDto>
+                .Created(mapper.Map<WarehouseDto>(warehouse), "Warehouse created successfully.");
             }
-            catch (Exception ex) when (IsUniqueConstraintViolation(ex) && attempt < MaxCreateAttempts)
+            catch (Exception ex) when (IsCreateRetryable(ex) && attempt < MaxCreateAttempts)
             {
-                warehouseRepo.Remove(warehouse);
+                await unitOfWork.RollbackTransactionAsync(cancellationToken);
+
+                if (await WarehouseNameExistsAsync(warehouseRepo, normalizedName, cancellationToken))
+                {
+                    return ServiceResponse<WarehouseDto>.Conflict(
+                        $"A warehouse with name '{normalizedName}' already exists.");
+                }
+
                 logger.LogWarning(
                     ex,
-                    "Warehouse code generation collision on attempt {Attempt}/{MaxAttempts}. Retrying.",
+                    "Warehouse creation concurrency conflict on attempt {Attempt}/{MaxAttempts}. Retrying.",
                     attempt,
                     MaxCreateAttempts);
             }
+            catch
+            {
+                await unitOfWork.RollbackTransactionAsync(cancellationToken);
+                throw;
+            }
         }
 
-        return ServiceResponse<WarehouseDto>.Conflict(
-            "Unable to generate a unique warehouse code. Please retry.");
+        return ServiceResponse<WarehouseDto>
+        .Unavailable("The service is temporarily busy. Please retry in a moment");
     }
 
     public async Task<ServiceResponse<WarehouseDto>> UpdateAsync(
@@ -68,6 +97,7 @@ public class WarehouseService(
         CancellationToken cancellationToken = default)
     {
         var warehouseRepo = unitOfWork.Repository<Warehouse>();
+        var counterRepo = unitOfWork.Repository<WarehouseCodeCounter>();
         var warehouse = await warehouseRepo.GetByIdAsync(warehouseId, cancellationToken);
         if (warehouse is null)
         {
@@ -76,7 +106,31 @@ public class WarehouseService(
 
         if (request.Name is not null)
         {
-            warehouse.Name = request.Name.Trim();
+            var normalizedName = request.Name.Trim();
+            var duplicateNameExists = await warehouseRepo.ExistsAsync(
+                x => x.WarehouseId != warehouseId && x.Name == normalizedName,
+                cancellationToken);
+
+            if (duplicateNameExists)
+            {
+                return ServiceResponse<WarehouseDto>.Conflict(
+                    $"A warehouse with name '{normalizedName}' already exists.");
+            }
+
+            warehouse.Name = normalizedName;
+        }
+
+        if (request.State is not null)
+        {
+            var normalizedState = request.State.Trim();
+            if (!string.Equals(warehouse.State, normalizedState, StringComparison.Ordinal))
+            {
+                warehouse.State = normalizedState;
+                warehouse.Code = await GenerateNextWarehouseCodeAsync(
+                    counterRepo,
+                    warehouse.State,
+                    cancellationToken);
+            }
         }
 
         if (request.Location is not null)
@@ -96,7 +150,21 @@ public class WarehouseService(
 
         warehouse.UpdatedAt = DateTime.UtcNow;
         warehouseRepo.Update(warehouse);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex) when (IsUniqueConstraintViolation(ex))
+        {
+            if (request.Name is not null)
+            {
+                return ServiceResponse<WarehouseDto>.Conflict(
+                    $"A warehouse with name '{request.Name.Trim()}' already exists.");
+            }
+
+            throw;
+        }
 
         logger.LogInformation(
             "Inventory audit: operation={Operation}, actor={Actor}, entity=Warehouse, entityId={EntityId}",
@@ -196,48 +264,38 @@ public class WarehouseService(
     }
 
     private static async Task<string> GenerateNextWarehouseCodeAsync(
-        IBaseRepository<Warehouse> warehouseRepo,
+        IBaseRepository<WarehouseCodeCounter> counterRepo,
         string state,
         CancellationToken cancellationToken)
     {
         var stateCode = NormalizeStateCode(state);
-        var prefix = $"WH-{stateCode}-";
-        var matching = await warehouseRepo.WhereIncludingDeletedAsync(
-            x => x.Code.StartsWith(prefix),
-            cancellationToken);
+        var existingCounter = await counterRepo.FindAsync(x => x.StateCode == stateCode, cancellationToken);
+        var counterExists = existingCounter is not null;
+        var counter = existingCounter;
 
-        var maxSequence = matching
-            .Select(x => ParseSequence(x.Code, prefix))
-            .Where(x => x.HasValue)
-            .Select(x => x!.Value)
-            .DefaultIfEmpty(0)
-            .Max();
-
-        return $"{prefix}{maxSequence + 1:000}";
-    }
-
-    private static int? ParseSequence(string code, string prefix)
-    {
-        if (!code.StartsWith(prefix, StringComparison.Ordinal))
+        if (!counterExists)
         {
-            return null;
+            counter = new WarehouseCodeCounter
+            {
+                StateCode = stateCode,
+                LastNumber = 0
+            };
+            await counterRepo.AddAsync(counter, cancellationToken);
         }
 
-        var suffix = code[prefix.Length..];
-        return int.TryParse(suffix, out var value) ? value : null;
+        counter!.LastNumber += 1;
+        if (counterExists)
+        {
+            counterRepo.Update(counter);
+        }
+
+        return $"WH-{stateCode}-{counter.LastNumber:000}";
     }
 
     private static string NormalizeStateCode(string state)
     {
-        var cleaned = new string([.. state.Where(char.IsLetterOrDigit)])
-            .ToUpperInvariant();
-
-        if (cleaned.Length >= 3)
-        {
-            return cleaned[..3];
-        }
-
-        return cleaned.PadRight(3, 'X');
+        return new string([.. state.Where(char.IsLetterOrDigit)])
+            .ToUpperInvariant()[..3];
     }
 
     private static bool IsUniqueConstraintViolation(Exception exception)
@@ -258,9 +316,32 @@ public class WarehouseService(
         return exception.InnerException is not null && IsUniqueConstraintViolation(exception.InnerException);
     }
 
+    private static bool IsRetryableTransactionFailure(Exception exception)
+    {
+        if (TryGetSqlState(exception, out var sqlState))
+        {
+            return sqlState is "40001" or "40P01";
+        }
+
+        return exception.InnerException is not null && IsRetryableTransactionFailure(exception.InnerException);
+    }
+
+    private static bool IsCreateRetryable(Exception exception)
+        => IsUniqueConstraintViolation(exception) || IsRetryableTransactionFailure(exception);
+
     private static bool TryGetSqlState(Exception? exception, out string? sqlState)
     {
         sqlState = exception?.GetType().GetProperty("SqlState")?.GetValue(exception) as string;
         return !string.IsNullOrWhiteSpace(sqlState);
+    }
+
+    private static Task<bool> WarehouseNameExistsAsync(
+        IBaseRepository<Warehouse> warehouseRepo,
+        string normalizedName,
+        CancellationToken cancellationToken)
+    {
+        return warehouseRepo.ExistsAsync(
+            x => x.Name == normalizedName,
+            cancellationToken);
     }
 }

@@ -54,35 +54,9 @@ public class IdempotencyService(
         var key = $"idem:inventory:{operationName}:{userId}:{idempotencyKey}";
         var payloadHash = ComputePayloadHash(request);
 
-        var existingRecordJson = await redis.GetAsync(key);
-        if (!string.IsNullOrWhiteSpace(existingRecordJson))
+        try
         {
-            var existingRecord = JsonSerializer.Deserialize<IdempotencyRecord>(existingRecordJson, _jsonOptions);
-            if (existingRecord != null)
-            {
-                var existingResult = ParseExistingRecord<TResponse>(existingRecord, payloadHash, key);
-                if (existingResult != null)
-                {
-                    return existingResult;
-                }
-            }
-        }
-
-        var inProgress = new IdempotencyRecord
-        {
-            State = IdempotencyRecordState.InProgress,
-            PayloadHash = payloadHash,
-            ResponseJson = null
-        };
-
-        var setSucceeded = await redis.SetIfNotExistsAsync(
-            key,
-            JsonSerializer.Serialize(inProgress, _jsonOptions),
-            TimeSpan.FromMinutes(InProgressTtlMinutes));
-
-        if (!setSucceeded)
-        {
-            existingRecordJson = await redis.GetAsync(key);
+            var existingRecordJson = await redis.GetAsync(key);
             if (!string.IsNullOrWhiteSpace(existingRecordJson))
             {
                 var existingRecord = JsonSerializer.Deserialize<IdempotencyRecord>(existingRecordJson, _jsonOptions);
@@ -96,24 +70,59 @@ public class IdempotencyService(
                 }
             }
 
-            return CreateConflict<TResponse>("An idempotent request with this key is already in progress.");
+            var inProgress = new IdempotencyRecord
+            {
+                State = IdempotencyRecordState.InProgress,
+                PayloadHash = payloadHash,
+                ResponseJson = null
+            };
+
+            var setSucceeded = await redis.SetIfNotExistsAsync(
+                key,
+                JsonSerializer.Serialize(inProgress, _jsonOptions),
+                TimeSpan.FromMinutes(InProgressTtlMinutes));
+
+            if (!setSucceeded)
+            {
+                existingRecordJson = await redis.GetAsync(key);
+                if (!string.IsNullOrWhiteSpace(existingRecordJson))
+                {
+                    var existingRecord = JsonSerializer.Deserialize<IdempotencyRecord>(existingRecordJson, _jsonOptions);
+                    if (existingRecord != null)
+                    {
+                        var existingResult = ParseExistingRecord<TResponse>(existingRecord, payloadHash, key);
+                        if (existingResult != null)
+                        {
+                            return existingResult;
+                        }
+                    }
+                }
+
+                return CreateConflict<TResponse>("An idempotent request with this key is already in progress.");
+            }
+
+            var response = await action(cancellationToken);
+
+            var completedRecord = new IdempotencyRecord
+            {
+                State = IdempotencyRecordState.Completed,
+                PayloadHash = payloadHash,
+                ResponseJson = JsonSerializer.Serialize(response, _jsonOptions)
+            };
+
+            await redis.SetAsync(
+                key,
+                JsonSerializer.Serialize(completedRecord, _jsonOptions),
+                TimeSpan.FromHours(CompletedTtlHours));
+
+            return response;
         }
-
-        var response = await action(cancellationToken);
-
-        var completedRecord = new IdempotencyRecord
+        catch (RedisUnavailableException ex)
         {
-            State = IdempotencyRecordState.Completed,
-            PayloadHash = payloadHash,
-            ResponseJson = JsonSerializer.Serialize(response, _jsonOptions)
-        };
-
-        await redis.SetAsync(
-            key,
-            JsonSerializer.Serialize(completedRecord, _jsonOptions),
-            TimeSpan.FromHours(CompletedTtlHours));
-
-        return response;
+            logger.LogError(ex, "Redis unavailable for idempotency key {IdempotencyKey}", key);
+            return CreateUnavailable<TResponse>(
+                "Request processing is temporarily unavailable. Please try again shortly.");
+        }
     }
 
     private TResponse? ParseExistingRecord<TResponse>(IdempotencyRecord existingRecord, string payloadHash, string key)
@@ -172,6 +181,30 @@ public class IdempotencyService(
         }
 
         throw new InvalidOperationException($"Unable to create conflict response for type {typeof(TResponse).Name}");
+    }
+
+    private static TResponse CreateUnavailable<TResponse>(string message)
+        where TResponse : ServiceResponseBase
+    {
+        if (typeof(TResponse) == typeof(ServiceResponse))
+        {
+            return (TResponse)(object)ServiceResponse.Unavailable(message);
+        }
+
+        var method = typeof(ServiceResponseBase)
+            .GetMethod(nameof(ServiceResponseBase.Unavailable))?
+            .MakeGenericMethod(typeof(TResponse));
+
+        if (method != null)
+        {
+            var value = method.Invoke(null, [message]);
+            if (value is TResponse typed)
+            {
+                return typed;
+            }
+        }
+
+        throw new InvalidOperationException($"Unable to create unavailable response for type {typeof(TResponse).Name}");
     }
 
     private sealed class IdempotencyRecord

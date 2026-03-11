@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Asp.Versioning.ApiExplorer;
 using KipInventorySystem.API.Extensions;
 using KipInventorySystem.Application.Extensions;
@@ -5,13 +6,20 @@ using KipInventorySystem.Infrastructure.Extensions;
 using KipInventorySystem.Infrastructure.Persistence;
 using KipInventorySystem.Infrastructure.Seeder;
 using Hangfire;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Serilog;
 using SwaggerThemes;
 using static KipInventorySystem.Shared.Models.AppSettings;
 using KipInventorySystem.API.Middlewares;
 using HangfireBasicAuthenticationFilter;
+
+var healthJsonOptions = new JsonSerializerOptions
+{
+    WriteIndented = true
+};
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -81,6 +89,25 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 
 app.MapControllers();
 
-app.MapHealthChecks("/health");
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = (context, report) => WriteHealthCheckResponse(context, report, healthJsonOptions)
+});
 
 app.Run();
+
+static Task WriteHealthCheckResponse(
+    HttpContext context,
+    HealthReport report,
+    JsonSerializerOptions healthJsonOptions)
+{
+    context.Response.ContentType = "application/json";
+
+    var payload = new
+    {
+        status = report.Status.ToString(),
+        timestamp = DateTime.UtcNow
+    };
+
+    return context.Response.WriteAsync(JsonSerializer.Serialize(payload, healthJsonOptions));
+}
