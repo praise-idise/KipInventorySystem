@@ -19,6 +19,15 @@ public class Product : BaseEntity
     [MaxLength(1000)]
     public string? Description { get; set; }
 
+    [MaxLength(3)]
+    public string CategoryCode { get; set; } = string.Empty;
+
+    [MaxLength(3)]
+    public string BrandCode { get; set; } = string.Empty;
+
+    [MaxLength(20)]
+    public string ItemCode { get; set; } = string.Empty;
+
     [MaxLength(20)]
     public string UnitOfMeasure { get; set; } = "pcs";
 
@@ -28,6 +37,7 @@ public class Product : BaseEntity
     public Guid? DefaultSupplierId { get; set; }
     public Supplier? DefaultSupplier { get; set; }
 
+    public ICollection<ProductVariantAttribute> VariantAttributes { get; set; } = [];
     public ICollection<WarehouseInventory> WarehouseInventories { get; set; } = [];
     public ICollection<PurchaseOrderLine> PurchaseOrderLines { get; set; } = [];
     public ICollection<StockMovement> StockMovements { get; set; } = [];

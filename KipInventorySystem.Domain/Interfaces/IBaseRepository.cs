@@ -25,7 +25,8 @@ public interface IBaseRepository<T> where T : class
         RequestParameters parameters,
         Func<IQueryable<T>, IOrderedQueryable<T>> orderBy,
         Expression<Func<T, bool>>? predicate = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        Func<IQueryable<T>, IQueryable<T>>? include = null);
 
     Task<List<T>> GetPagedListAsync(int skip, int take, CancellationToken cancellationToken = default);
 

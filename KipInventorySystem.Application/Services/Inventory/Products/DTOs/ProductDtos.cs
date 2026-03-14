@@ -2,7 +2,26 @@ using System.ComponentModel;
 
 namespace KipInventorySystem.Application.Services.Inventory.Products.DTOs;
 
-public class CreateProductRequest
+public class CreateProductVariantAttributeDTO
+{
+    [DefaultValue("Color")]
+    public string AttributeName { get; set; } = string.Empty;
+
+    [DefaultValue("BLK")]
+    public string AttributeCode { get; set; } = string.Empty;
+
+    [DefaultValue(1)]
+    public int SortOrder { get; set; }
+}
+
+public class ProductVariantAttributeDTO
+{
+    public string AttributeName { get; set; } = string.Empty;
+    public string AttributeCode { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
+}
+
+public class CreateProductDTO
 {
     [DefaultValue("ELE")]
     public string CategoryCode { get; set; } = string.Empty;
@@ -10,8 +29,7 @@ public class CreateProductRequest
     [DefaultValue("APL")]
     public string BrandCode { get; set; } = string.Empty;
 
-    [DefaultValue("BLK")]
-    public string VariantCode { get; set; } = string.Empty;
+    public List<CreateProductVariantAttributeDTO> VariantAttributes { get; set; } = [];
 
     [DefaultValue("iPhone 15 128GB Black")]
     public string Name { get; set; } = string.Empty;
@@ -26,14 +44,22 @@ public class CreateProductRequest
     public int ReorderThreshold { get; set; } = 10;
 
     [DefaultValue(100)]
-    public int ReorderQuantity { get; set; } = 20;
+    public int ReorderQuantity { get; set; } = 40;
 
     [DefaultValue("3fa85f64-5717-4562-b3fc-2c963f66afa6")]
-    public Guid? DefaultSupplierId { get; set; }
+    public Guid DefaultSupplierId { get; set; }
 }
 
-public class UpdateProductRequest
+public class UpdateProductDTO
 {
+    [DefaultValue("ELE")]
+    public string? CategoryCode { get; set; }
+
+    [DefaultValue("APL")]
+    public string? BrandCode { get; set; }
+
+    public List<ProductVariantAttributeDTO>? VariantAttributes { get; set; }
+
     [DefaultValue("iPhone 15 128GB Black")]
     public string? Name { get; set; }
 
@@ -56,13 +82,17 @@ public class UpdateProductRequest
     public bool? IsActive { get; set; }
 }
 
-public class ProductDto
+public class ProductDTO
 {
     public Guid ProductId { get; set; }
     public string Sku { get; set; } = string.Empty;
+    public string CategoryCode { get; set; } = string.Empty;
+    public string BrandCode { get; set; } = string.Empty;
+    public string ItemCode { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string UnitOfMeasure { get; set; } = string.Empty;
+    public List<ProductVariantAttributeDTO> VariantAttributes { get; set; } = [];
     public int ReorderThreshold { get; set; }
     public int ReorderQuantity { get; set; }
     public Guid? DefaultSupplierId { get; set; }

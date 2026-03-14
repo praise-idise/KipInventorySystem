@@ -33,7 +33,7 @@ public class ProductsController(IProductService productService) : BaseController
 
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN)]
-    public async Task<IActionResult> Create([FromBody] CreateProductRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Create([FromBody] CreateProductDTO request, CancellationToken cancellationToken)
     {
         var validation = ValidateModelState();
         if (validation != null) return validation;
@@ -46,7 +46,7 @@ public class ProductsController(IProductService productService) : BaseController
     [Roles(ROLE_TYPE.ADMIN)]
     public async Task<IActionResult> Update(
         Guid productId,
-        [FromBody] UpdateProductRequest request,
+        [FromBody] UpdateProductDTO request,
         CancellationToken cancellationToken)
     {
         var validation = ValidateModelState();

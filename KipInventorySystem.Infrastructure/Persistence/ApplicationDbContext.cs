@@ -12,6 +12,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<WarehouseCodeCounter> WarehouseCodeCounters => Set<WarehouseCodeCounter>();
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductVariantAttribute> ProductVariantAttributes => Set<ProductVariantAttribute>();
     public DbSet<WarehouseInventory> WarehouseInventories => Set<WarehouseInventory>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderLine> PurchaseOrderLines => Set<PurchaseOrderLine>();
@@ -69,6 +70,16 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         modelBuilder.Entity<Product>()
             .HasIndex(e => e.Sku)
+            .IsUnique();
+
+        modelBuilder.Entity<Product>()
+            .HasMany(e => e.VariantAttributes)
+            .WithOne(e => e.Product)
+            .HasForeignKey(e => e.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ProductVariantAttribute>()
+            .HasIndex(e => new { e.ProductId, e.AttributeName })
             .IsUnique();
 
         modelBuilder.Entity<PurchaseOrder>()

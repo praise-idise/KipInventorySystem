@@ -69,12 +69,18 @@ internal class BaseRepository<T>(ApplicationDbContext context) : IBaseRepository
         RequestParameters parameters,
         Func<IQueryable<T>, IOrderedQueryable<T>> orderBy,
         Expression<Func<T, bool>>? predicate = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<IQueryable<T>, IQueryable<T>>? include = null)
     {
         int page = Math.Max(1, parameters.PageNumber);
         int size = Math.Clamp(parameters.PageSize, 1, 100);
 
         IQueryable<T> query = _context.Set<T>();
+
+        if (include is not null)
+        {
+            query = include(query);
+        }
 
         if (predicate is not null)
         {

@@ -7,37 +7,52 @@ using KipInventorySystem.Shared.Responses;
 using MapsterMapper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 
 namespace KipInventorySystem.Application.Services.Inventory.Products;
 
-public class ProductService(
+public partial class ProductService(
     IUnitOfWork unitOfWork,
     IUserContext userContext,
     IMapper mapper,
     ILogger<ProductService> logger) : IProductService
 {
-    private const int MaxCreateAttempts = 5;
+    private const int MaxCreateAttempts = 3;
+    private static readonly HashSet<string> IgnoredItemCodeTokens =
+    [
+        "THE",
+        "AND",
+        "FOR",
+        "WITH",
+        "OF",
+        "PCS",
+        "PIECE",
+        "PIECES",
+        "BOX",
+        "BOTTLE",
+        "CARTON",
+        "PACK"
+    ];
 
-    public async Task<ServiceResponse<ProductDto>> CreateAsync(
-        CreateProductRequest request,
+    public async Task<ServiceResponse<ProductDTO>> CreateAsync(
+        CreateProductDTO request,
         CancellationToken cancellationToken = default)
     {
         var productRepo = unitOfWork.Repository<Product>();
         var supplierRepo = unitOfWork.Repository<Supplier>();
 
-        if (request.DefaultSupplierId.HasValue)
+        var supplier = await supplierRepo.GetByIdAsync(request.DefaultSupplierId, cancellationToken);
+        if (supplier is null)
         {
-            var supplier = await supplierRepo.GetByIdAsync(request.DefaultSupplierId.Value, cancellationToken);
-            if (supplier is null)
-            {
-                return ServiceResponse<ProductDto>.BadRequest("Default supplier was not found.");
-            }
+            return ServiceResponse<ProductDTO>.BadRequest("Default supplier was not found.");
         }
 
         for (var attempt = 1; attempt <= MaxCreateAttempts; attempt++)
         {
             var product = mapper.Map<Product>(request);
-            product.Sku = await GenerateNextSkuAsync(productRepo, request, cancellationToken);
+            NormalizeScalarFields(product);
+            product.VariantAttributes = [.. NormalizeVariantAttributes(product.VariantAttributes)];
+            product.Sku = await GenerateNextSkuAsync(productRepo, product, cancellationToken);
             product.CreatedAt = DateTime.UtcNow;
             product.UpdatedAt = DateTime.UtcNow;
 
@@ -53,8 +68,8 @@ public class ProductService(
                     product.ProductId,
                     product.Sku);
 
-                return ServiceResponse<ProductDto>.Created(
-                    mapper.Map<ProductDto>(product),
+                return ServiceResponse<ProductDTO>.Created(
+                    mapper.Map<ProductDTO>(product),
                     "Product created successfully.");
             }
             catch (Exception ex) when (IsUniqueConstraintViolation(ex) && attempt < MaxCreateAttempts)
@@ -68,26 +83,57 @@ public class ProductService(
             }
         }
 
-        return ServiceResponse<ProductDto>.Conflict(
+        return ServiceResponse<ProductDTO>.Conflict(
             "Unable to generate a unique SKU. Please retry.");
     }
 
-    public async Task<ServiceResponse<ProductDto>> UpdateAsync(
+    public async Task<ServiceResponse<ProductDTO>> UpdateAsync(
         Guid productId,
-        UpdateProductRequest request,
+        UpdateProductDTO request,
         CancellationToken cancellationToken = default)
     {
         var productRepo = unitOfWork.Repository<Product>();
         var supplierRepo = unitOfWork.Repository<Supplier>();
-        var product = await productRepo.GetByIdAsync(productId, cancellationToken);
+        var product = await productRepo.GetByIdAsync(
+            productId,
+            query => query.Include(x => x.VariantAttributes),
+            cancellationToken);
         if (product is null)
         {
-            return ServiceResponse<ProductDto>.NotFound("Product was not found.");
+            return ServiceResponse<ProductDTO>.NotFound("Product was not found.");
+        }
+
+        var shouldRegenerateSku = false;
+
+        if (request.CategoryCode is not null)
+        {
+            product.CategoryCode = request.CategoryCode.Trim().ToUpperInvariant();
+            shouldRegenerateSku = true;
+        }
+
+        if (request.BrandCode is not null)
+        {
+            product.BrandCode = request.BrandCode.Trim().ToUpperInvariant();
+            shouldRegenerateSku = true;
+        }
+
+        if (request.VariantAttributes is not null)
+        {
+            product.VariantAttributes.Clear();
+
+            var variantAttributes = mapper.Map<List<ProductVariantAttribute>>(request.VariantAttributes);
+            foreach (var variantAttribute in NormalizeVariantAttributes(variantAttributes))
+            {
+                product.VariantAttributes.Add(variantAttribute);
+            }
+
+            shouldRegenerateSku = true;
         }
 
         if (request.Name is not null)
         {
             product.Name = request.Name.Trim();
+            shouldRegenerateSku = true;
         }
 
         if (request.Description is not null)
@@ -98,6 +144,7 @@ public class ProductService(
         if (request.UnitOfMeasure is not null)
         {
             product.UnitOfMeasure = request.UnitOfMeasure.Trim();
+            shouldRegenerateSku = true;
         }
 
         if (request.ReorderThreshold.HasValue)
@@ -115,7 +162,7 @@ public class ProductService(
             var supplier = await supplierRepo.GetByIdAsync(request.DefaultSupplierId.Value, cancellationToken);
             if (supplier is null)
             {
-                return ServiceResponse<ProductDto>.BadRequest("Default supplier was not found.");
+                return ServiceResponse<ProductDTO>.BadRequest("Default supplier was not found.");
             }
 
             product.DefaultSupplierId = request.DefaultSupplierId.Value;
@@ -124,6 +171,13 @@ public class ProductService(
         if (request.IsActive.HasValue)
         {
             product.IsActive = request.IsActive.Value;
+        }
+
+        NormalizeScalarFields(product);
+
+        if (shouldRegenerateSku)
+        {
+            product.Sku = await GenerateNextSkuAsync(productRepo, product, cancellationToken, product.ProductId);
         }
 
         product.UpdatedAt = DateTime.UtcNow;
@@ -137,8 +191,8 @@ public class ProductService(
             userContext.GetCurrentUser().UserId,
             product.ProductId);
 
-        return ServiceResponse<ProductDto>.Success(
-            mapper.Map<ProductDto>(product),
+        return ServiceResponse<ProductDTO>.Success(
+            mapper.Map<ProductDTO>(product),
             "Product updated successfully.");
     }
 
@@ -167,38 +221,42 @@ public class ProductService(
         return ServiceResponse.Success("Product deleted successfully.");
     }
 
-    public async Task<ServiceResponse<ProductDto>> GetByIdAsync(Guid productId, CancellationToken cancellationToken = default)
+    public async Task<ServiceResponse<ProductDTO>> GetByIdAsync(Guid productId, CancellationToken cancellationToken = default)
     {
-        var product = await unitOfWork.Repository<Product>().GetByIdAsync(productId, cancellationToken);
+        var product = await unitOfWork.Repository<Product>().GetByIdAsync(
+            productId,
+            query => query.Include(x => x.VariantAttributes),
+            cancellationToken);
         if (product is null)
         {
-            return ServiceResponse<ProductDto>.NotFound("Product was not found.");
+            return ServiceResponse<ProductDTO>.NotFound("Product was not found.");
         }
 
-        return ServiceResponse<ProductDto>.Success(mapper.Map<ProductDto>(product));
+        return ServiceResponse<ProductDTO>.Success(mapper.Map<ProductDTO>(product));
     }
 
-    public async Task<ServiceResponse<PaginationResult<ProductDto>>> GetAllAsync(
+    public async Task<ServiceResponse<PaginationResult<ProductDTO>>> GetAllAsync(
         RequestParameters parameters,
         CancellationToken cancellationToken = default)
     {
         var products = await unitOfWork.Repository<Product>().GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.CreatedAt),
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken,
+            include: query => query.Include(x => x.VariantAttributes));
 
-        var response = new PaginationResult<ProductDto>
+        var response = new PaginationResult<ProductDTO>
         {
-            Records = products.Records.Select(x => mapper.Map<ProductDto>(x)).ToList(),
+            Records = products.Records.Select(x => mapper.Map<ProductDTO>(x)).ToList(),
             TotalRecords = products.TotalRecords,
             PageSize = products.PageSize,
             CurrentPage = products.CurrentPage
         };
 
-        return ServiceResponse<PaginationResult<ProductDto>>.Success(response);
+        return ServiceResponse<PaginationResult<ProductDTO>>.Success(response);
     }
 
-    public async Task<ServiceResponse<PaginationResult<ProductDto>>> SearchAsync(
+    public async Task<ServiceResponse<PaginationResult<ProductDTO>>> SearchAsync(
         string? searchTerm,
         RequestParameters parameters,
         CancellationToken cancellationToken = default)
@@ -212,88 +270,214 @@ public class ProductService(
         var products = await unitOfWork.Repository<Product>().GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.CreatedAt),
-            x => x.Name.ToLower().Contains(term) || x.Sku.ToLower().Contains(term),
-            cancellationToken);
+            x => x.Name.ToLower().Contains(term) ||
+                 x.Sku.ToLower().Contains(term) ||
+                 x.ItemCode.ToLower().Contains(term) ||
+                 x.BrandCode.ToLower().Contains(term) ||
+                 x.CategoryCode.ToLower().Contains(term) ||
+                 x.UnitOfMeasure.ToLower().Contains(term) ||
+                 x.VariantAttributes.Any(attribute =>
+                     attribute.AttributeName.ToLower().Contains(term) ||
+                     attribute.AttributeCode.ToLower().Contains(term)),
+            cancellationToken,
+            query => query.Include(x => x.VariantAttributes));
 
-        var response = new PaginationResult<ProductDto>
+        var response = new PaginationResult<ProductDTO>
         {
-            Records = [.. products.Records.Select(x => mapper.Map<ProductDto>(x))],
+            Records = [.. products.Records.Select(x => mapper.Map<ProductDTO>(x))],
             TotalRecords = products.TotalRecords,
             PageSize = products.PageSize,
             CurrentPage = products.CurrentPage
         };
 
-        return ServiceResponse<PaginationResult<ProductDto>>.Success(response);
+        return ServiceResponse<PaginationResult<ProductDTO>>.Success(response);
     }
 
     private static async Task<string> GenerateNextSkuAsync(
         IBaseRepository<Product> productRepo,
-        CreateProductRequest request,
-        CancellationToken cancellationToken)
+        Product product,
+        CancellationToken cancellationToken,
+        Guid? productIdToIgnore = null)
     {
-        var categoryCode = NormalizeThreeCharCode(request.CategoryCode);
-        var brandCode = NormalizeThreeCharCode(request.BrandCode);
-        var variantCode = NormalizeVariantCode(request.VariantCode);
-
-        var prefix = $"SKU-{categoryCode}-{brandCode}-";
-        var suffix = $"-{variantCode}";
+        var baseSku = BuildBaseSku(product);
 
         var matching = await productRepo.WhereIncludingDeletedAsync(
-            x => x.Sku.StartsWith(prefix) && x.Sku.EndsWith(suffix),
+            x => x.Sku == baseSku || x.Sku.StartsWith($"{baseSku}-"),
             cancellationToken);
 
-        var maxItem = matching
-            .Select(x => ParseItemSequence(x.Sku, prefix, suffix))
+        var maxSequence = matching
+            .Where(x => !productIdToIgnore.HasValue || x.ProductId != productIdToIgnore.Value)
+            .Select(x => ParseSkuSequence(x.Sku, baseSku))
             .Where(x => x.HasValue)
             .Select(x => x!.Value)
             .DefaultIfEmpty(0)
             .Max();
 
-        return $"{prefix}{maxItem + 1:000}{suffix}";
+        return maxSequence == 0 ? baseSku : $"{baseSku}-{maxSequence + 1:00}";
     }
 
-    private static int? ParseItemSequence(string sku, string prefix, string suffix)
+    private static int? ParseSkuSequence(string sku, string baseSku)
     {
-        if (!sku.StartsWith(prefix, StringComparison.Ordinal) ||
-            !sku.EndsWith(suffix, StringComparison.Ordinal))
+        if (string.Equals(sku, baseSku, StringComparison.Ordinal))
+        {
+            return 1;
+        }
+
+        if (!sku.StartsWith($"{baseSku}-", StringComparison.Ordinal))
         {
             return null;
         }
 
-        var itemPartLength = sku.Length - prefix.Length - suffix.Length;
-        if (itemPartLength <= 0)
-        {
-            return null;
-        }
-
-        var itemPart = sku.Substring(prefix.Length, itemPartLength);
-        return int.TryParse(itemPart, out var value) ? value : null;
+        var suffix = sku[(baseSku.Length + 1)..];
+        return int.TryParse(suffix, out var value) ? value : null;
     }
 
-    private static string NormalizeThreeCharCode(string value)
+    private static string BuildBaseSku(Product product)
     {
-        var cleaned = NormalizeAlphanumeric(value);
-        if (cleaned.Length >= 3)
+        var segments = new List<string>
         {
-            return cleaned[..3];
+            NormalizeCodeSegment(product.CategoryCode, 3, padToLength: true),
+            NormalizeCodeSegment(product.BrandCode, 3, padToLength: true),
+            NormalizeCodeSegment(product.ItemCode, 20)
+        };
+
+        var variantSegments = product.VariantAttributes
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.AttributeName)
+            .Select(x => NormalizeCodeSegment(x.AttributeCode, 30))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        if (variantSegments.Count == 0)
+        {
+            segments.Add("STD");
+        }
+        else
+        {
+            segments.AddRange(variantSegments);
         }
 
-        return cleaned.PadRight(3, 'X');
+        segments.Add(NormalizeCodeSegment(product.UnitOfMeasure, 10));
+        return string.Join("-", segments);
     }
 
-    private static string NormalizeVariantCode(string value)
+    private static void NormalizeScalarFields(Product product)
+    {
+        product.CategoryCode = NormalizeCodeSegment(product.CategoryCode, 3, padToLength: true);
+        product.BrandCode = NormalizeCodeSegment(product.BrandCode, 3, padToLength: true);
+        product.Name = product.Name.Trim();
+        product.ItemCode = GenerateItemCode(product.Name);
+        product.Description = string.IsNullOrWhiteSpace(product.Description) ? null : product.Description.Trim();
+        product.UnitOfMeasure = product.UnitOfMeasure.Trim();
+    }
+
+    private static List<ProductVariantAttribute> NormalizeVariantAttributes(IEnumerable<ProductVariantAttribute> attributes)
+    {
+        return [.. attributes
+            .Select(attribute => new ProductVariantAttribute
+            {
+                ProductVariantAttributeId = attribute.ProductVariantAttributeId == Guid.Empty
+                    ? Guid.CreateVersion7()
+                    : attribute.ProductVariantAttributeId,
+                ProductId = attribute.ProductId,
+                AttributeName = string.IsNullOrWhiteSpace(attribute.AttributeName)
+                    ? string.Empty
+                    : attribute.AttributeName.Trim(),
+                AttributeCode = NormalizeCodeSegment(attribute.AttributeCode, 30),
+                SortOrder = attribute.SortOrder
+            })
+            .OrderBy(attribute => attribute.SortOrder)
+            .ThenBy(attribute => attribute.AttributeName)];
+    }
+
+    private static string NormalizeCodeSegment(string value, int maxLength, bool padToLength = false)
     {
         var cleaned = NormalizeAlphanumeric(value);
         if (string.IsNullOrWhiteSpace(cleaned))
         {
-            return "STD";
+            return padToLength ? new string('X', maxLength) : "STD";
         }
 
-        return cleaned.Length > 10 ? cleaned[..10] : cleaned;
+        if (cleaned.Length > maxLength)
+        {
+            return cleaned[..maxLength];
+        }
+
+        return padToLength ? cleaned.PadRight(maxLength, 'X') : cleaned;
     }
 
     private static string NormalizeAlphanumeric(string value)
-        => new string(value.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        => new string([.. value.Where(char.IsLetterOrDigit)]).ToUpperInvariant();
+
+    private static string GenerateItemCode(string productName)
+    {
+        var tokens = MyRegex().Matches(productName)
+            .Select(match => NormalizeAlphanumeric(match.Value))
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .Where(token => !IgnoredItemCodeTokens.Contains(token))
+            .ToList();
+
+        if (tokens.Count == 0)
+        {
+            return "STD";
+        }
+
+        const int maxLength = 20;
+        var parts = new List<string>();
+        var currentLength = 0;
+
+        foreach (var token in tokens)
+        {
+            var segment = BuildItemCodeSegment(token);
+            if (string.IsNullOrWhiteSpace(segment))
+            {
+                continue;
+            }
+
+            var remaining = maxLength - currentLength;
+            if (remaining <= 0)
+            {
+                break;
+            }
+
+            if (segment.Length > remaining)
+            {
+                segment = segment[..remaining];
+            }
+
+            parts.Add(segment);
+            currentLength += segment.Length;
+        }
+
+        var itemCode = string.Concat(parts);
+        return string.IsNullOrWhiteSpace(itemCode) ? "STD" : itemCode;
+    }
+
+    private static string BuildItemCodeSegment(string token)
+    {
+        if (token.Any(char.IsDigit))
+        {
+            return token.Length > 4 ? token[..4] : token;
+        }
+
+        if (token.Length <= 3)
+        {
+            return token;
+        }
+
+        var first = token[0];
+        var consonants = token[1..]
+            .Where(char.IsLetter)
+            .Where(character => !"AEIOU".Contains(character))
+            .ToList();
+
+        if (consonants.Count >= 2)
+        {
+            return string.Concat(first, consonants[0], consonants[1]);
+        }
+
+        return token[..Math.Min(3, token.Length)];
+    }
 
     private static bool IsUniqueConstraintViolation(Exception exception)
     {
@@ -310,7 +494,10 @@ public class ProductService(
                    message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase);
         }
 
-        return exception.InnerException is not null && IsUniqueConstraintViolation(exception.InnerException);
+        var innerMessage = exception.InnerException?.Message;
+        return !string.IsNullOrWhiteSpace(innerMessage) &&
+               (innerMessage.Contains("duplicate key value", StringComparison.OrdinalIgnoreCase) ||
+                innerMessage.Contains("unique constraint", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool TryGetSqlState(Exception? exception, out string? sqlState)
@@ -318,4 +505,8 @@ public class ProductService(
         sqlState = exception?.GetType().GetProperty("SqlState")?.GetValue(exception) as string;
         return !string.IsNullOrWhiteSpace(sqlState);
     }
+
+    [GeneratedRegex("[A-Za-z0-9]+")]
+    private static partial Regex MyRegex();
+
 }

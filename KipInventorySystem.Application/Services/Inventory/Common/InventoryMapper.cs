@@ -15,7 +15,9 @@ public class InventoryMapper : IRegister
     {
         config.NewConfig<Supplier, SupplierDto>();
         config.NewConfig<Warehouse, WarehouseDto>();
-        config.NewConfig<Product, ProductDto>();
+        config.NewConfig<ProductVariantAttribute, ProductVariantAttributeDTO>();
+        config.NewConfig<Product, ProductDTO>()
+            .Map(dest => dest.VariantAttributes, src => src.VariantAttributes.OrderBy(x => x.SortOrder));
 
         config.NewConfig<PurchaseOrderLine, PurchaseOrderLineDto>();
         config.NewConfig<PurchaseOrder, PurchaseOrderDto>();
@@ -37,10 +39,17 @@ public class InventoryMapper : IRegister
             .Map(dest => dest.State, src => src.State.Trim())
             .Map(dest => dest.Location, src => Normalize(src.Location));
 
-        config.NewConfig<CreateProductRequest, Product>()
+        config.NewConfig<CreateProductVariantAttributeDTO, ProductVariantAttribute>()
+            .Map(dest => dest.AttributeName, src => src.AttributeName.Trim())
+            .Map(dest => dest.AttributeCode, src => src.AttributeCode.Trim().ToUpperInvariant());
+
+        config.NewConfig<CreateProductDTO, Product>()
+            .Map(dest => dest.CategoryCode, src => src.CategoryCode.Trim().ToUpperInvariant())
+            .Map(dest => dest.BrandCode, src => src.BrandCode.Trim().ToUpperInvariant())
             .Map(dest => dest.Name, src => src.Name.Trim())
             .Map(dest => dest.Description, src => Normalize(src.Description))
-            .Map(dest => dest.UnitOfMeasure, src => src.UnitOfMeasure.Trim());
+            .Map(dest => dest.UnitOfMeasure, src => src.UnitOfMeasure.Trim())
+            .Map(dest => dest.VariantAttributes, src => src.VariantAttributes);
 
         config.NewConfig<CreatePurchaseOrderDraftRequest, PurchaseOrder>()
             .Map(dest => dest.Notes, src => Normalize(src.Notes));
