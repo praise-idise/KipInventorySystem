@@ -1,5 +1,6 @@
 using KipInventorySystem.Application.Services.Inventory.ProductSuppliers.DTOs;
 using System.ComponentModel;
+using System.Text.Json.Serialization;
 
 namespace KipInventorySystem.Application.Services.Inventory.Products.DTOs;
 
@@ -87,7 +88,8 @@ public class ProductDTO
     public string? Description { get; set; }
     public string UnitOfMeasure { get; set; } = string.Empty;
     public List<ProductVariantAttributeDTO> VariantAttributes { get; set; } = [];
-    public List<ProductSupplierDTO> Suppliers { get; set; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ProductSupplierDTO>? Suppliers { get; set; }
     public int ReorderThreshold { get; set; }
     public int ReorderQuantity { get; set; }
     public bool IsActive { get; set; }

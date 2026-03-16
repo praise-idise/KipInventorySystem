@@ -17,13 +17,19 @@ public class InventoryMapper : IRegister
         config.NewConfig<Supplier, SupplierDto>();
         config.NewConfig<Warehouse, WarehouseDto>();
         config.NewConfig<ProductVariantAttribute, ProductVariantAttributeDTO>();
-        config.NewConfig<ProductSupplier, ProductSupplierDTO>();
+        config.NewConfig<ProductSupplier, ProductSupplierDTO>()
+            .Map(dest => dest.SupplierName, src => src.Supplier.Name)
+            .Map(dest => dest.SupplierEmail, src => src.Supplier.Email);
         config.NewConfig<Product, ProductDTO>()
             .Map(dest => dest.VariantAttributes, src => src.VariantAttributes.OrderBy(x => x.SortOrder))
             .Map(dest => dest.Suppliers, src => src.ProductSuppliers.OrderByDescending(x => x.IsDefault).ThenBy(x => x.SupplierId));
 
-        config.NewConfig<PurchaseOrderLine, PurchaseOrderLineDTO>();
-        config.NewConfig<PurchaseOrder, PurchaseOrderDTO>();
+        config.NewConfig<PurchaseOrderLine, PurchaseOrderLineDTO>()
+            .Map(dest => dest.ProductName, src => src.Product.Name)
+            .Map(dest => dest.Sku, src => src.Product.Sku);
+        config.NewConfig<PurchaseOrder, PurchaseOrderDTO>()
+            .Map(dest => dest.WarehouseName, src => src.Warehouse.Name)
+            .Map(dest => dest.WarehouseState, src => src.Warehouse.State);
 
         config.NewConfig<TransferRequestLine, TransferRequestLineDto>();
         config.NewConfig<TransferRequest, TransferRequestDto>();
@@ -55,7 +61,8 @@ public class InventoryMapper : IRegister
             .Map(dest => dest.VariantAttributes, src => src.VariantAttributes);
 
         config.NewConfig<CreatePurchaseOrderDraftRequest, PurchaseOrder>()
-            .Map(dest => dest.Notes, src => Normalize(src.Notes));
+            .Map(dest => dest.Notes, src => Normalize(src.Notes))
+            .Ignore(dest => dest.Lines);
 
         config.NewConfig<CreatePurchaseOrderLineRequest, PurchaseOrderLine>();
 

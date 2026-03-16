@@ -7,6 +7,7 @@ using KipInventorySystem.Shared.Interfaces;
 using KipInventorySystem.Shared.Models;
 using KipInventorySystem.Shared.Responses;
 using MapsterMapper;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace KipInventorySystem.Application.Services.Inventory.PurchaseOrders;
@@ -55,9 +56,6 @@ public class PurchaseOrderService(
                 po.UpdatedAt = DateTime.UtcNow;
 
                 var poRepo = unitOfWork.Repository<PurchaseOrder>();
-                var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
-                await poRepo.AddAsync(po, token);
-
                 var lines = mapper.Map<List<PurchaseOrderLine>>(request.Lines);
                 foreach (var line in lines)
                 {
@@ -67,8 +65,8 @@ public class PurchaseOrderService(
                     line.UpdatedAt = DateTime.UtcNow;
                 }
 
-                await lineRepo.AddRangeAsync(lines, token);
                 po.Lines = lines;
+                await poRepo.AddAsync(po, token);
 
                 logger.LogInformation(
                     "Inventory audit: operation={Operation}, actor={Actor}, entity=PurchaseOrder, entityId={EntityId}, status={Status}",
@@ -269,14 +267,18 @@ public class PurchaseOrderService(
     public async Task<ServiceResponse<PurchaseOrderDTO>> GetByIdAsync(Guid purchaseOrderId, CancellationToken cancellationToken = default)
     {
         var poRepo = unitOfWork.Repository<PurchaseOrder>();
-        var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
-        var po = await poRepo.GetByIdAsync(purchaseOrderId, cancellationToken);
+        var po = await poRepo.GetByIdAsync(
+            purchaseOrderId,
+            query => query
+                .Include(x => x.Warehouse)
+                .Include(x => x.Lines)
+                .ThenInclude(x => x.Product),
+            cancellationToken);
         if (po is null)
         {
             return ServiceResponse<PurchaseOrderDTO>.NotFound("Purchase order was not found.");
         }
 
-        po.Lines = await lineRepo.WhereAsync(x => x.PurchaseOrderId == purchaseOrderId, cancellationToken);
         return ServiceResponse<PurchaseOrderDTO>.Success(mapper.Map<PurchaseOrderDTO>(po));
     }
 
@@ -285,31 +287,15 @@ public class PurchaseOrderService(
         CancellationToken cancellationToken = default)
     {
         var poRepo = unitOfWork.Repository<PurchaseOrder>();
-        var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
         var pagedOrders = await poRepo.GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.OrderedAt),
-            cancellationToken: cancellationToken);
-
-        var orders = pagedOrders.Records.ToList();
-        if (orders.Count > 0)
-        {
-            var ids = orders.Select(x => x.PurchaseOrderId).ToHashSet();
-            var lines = await lineRepo.WhereAsync(x => ids.Contains(x.PurchaseOrderId), cancellationToken);
-            var linesByOrderId = lines.GroupBy(x => x.PurchaseOrderId).ToDictionary(x => x.Key, x => x.ToList());
-
-            foreach (var order in orders)
-            {
-                if (linesByOrderId.TryGetValue(order.PurchaseOrderId, out var orderLines))
-                {
-                    order.Lines = orderLines;
-                }
-            }
-        }
+            cancellationToken: cancellationToken,
+            include: query => query.Include(x => x.Warehouse));
 
         var response = new PaginationResult<PurchaseOrderDTO>
         {
-            Records = [.. orders.Select(x => mapper.Map<PurchaseOrderDTO>(x))],
+            Records = [.. pagedOrders.Records.Select(MapPurchaseOrderSummary)],
             TotalRecords = pagedOrders.TotalRecords,
             PageSize = pagedOrders.PageSize,
             CurrentPage = pagedOrders.CurrentPage
@@ -330,33 +316,17 @@ public class PurchaseOrderService(
 
         var term = searchTerm.Trim().ToLower();
         var poRepo = unitOfWork.Repository<PurchaseOrder>();
-        var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
         var pagedOrders = await poRepo.GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.OrderedAt),
             x => x.PurchaseOrderNumber.ToLower().Contains(term) ||
                  (x.Notes != null && x.Notes.ToLower().Contains(term)),
-            cancellationToken);
-
-        var orders = pagedOrders.Records.ToList();
-        if (orders.Count > 0)
-        {
-            var ids = orders.Select(x => x.PurchaseOrderId).ToHashSet();
-            var lines = await lineRepo.WhereAsync(x => ids.Contains(x.PurchaseOrderId), cancellationToken);
-            var linesByOrderId = lines.GroupBy(x => x.PurchaseOrderId).ToDictionary(x => x.Key, x => x.ToList());
-
-            foreach (var order in orders)
-            {
-                if (linesByOrderId.TryGetValue(order.PurchaseOrderId, out var orderLines))
-                {
-                    order.Lines = orderLines;
-                }
-            }
-        }
+            cancellationToken,
+            query => query.Include(x => x.Warehouse));
 
         var response = new PaginationResult<PurchaseOrderDTO>
         {
-            Records = orders.Select(x => mapper.Map<PurchaseOrderDTO>(x)).ToList(),
+            Records = pagedOrders.Records.Select(MapPurchaseOrderSummary).ToList(),
             TotalRecords = pagedOrders.TotalRecords,
             PageSize = pagedOrders.PageSize,
             CurrentPage = pagedOrders.CurrentPage
@@ -400,7 +370,7 @@ public class PurchaseOrderService(
             if (productSupplier is null)
             {
                 return ServiceResponse<PurchaseOrderDTO>.BadRequest(
-                    $"Product '{productId}' is not linked to the selected supplier.");
+                    $"Product '{product.Name}' is not linked to the selected supplier.");
             }
         }
 
@@ -425,5 +395,12 @@ public class PurchaseOrderService(
 
     private static bool HasDuplicateProducts(IEnumerable<Guid> productIds)
         => productIds.GroupBy(x => x).Any(x => x.Count() > 1);
+
+    private PurchaseOrderDTO MapPurchaseOrderSummary(PurchaseOrder purchaseOrder)
+    {
+        var dto = mapper.Map<PurchaseOrderDTO>(purchaseOrder);
+        dto.Lines = null;
+        return dto;
+    }
 
 }

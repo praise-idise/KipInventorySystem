@@ -208,7 +208,8 @@ public partial class ProductService(
             productId,
             query => query
                 .Include(x => x.VariantAttributes)
-                .Include(x => x.ProductSuppliers),
+                .Include(x => x.ProductSuppliers)
+                    .ThenInclude(x => x.Supplier),
             cancellationToken);
         if (product is null)
         {
@@ -226,13 +227,11 @@ public partial class ProductService(
             parameters,
             query => query.OrderByDescending(x => x.CreatedAt),
             cancellationToken: cancellationToken,
-            include: query => query
-                .Include(x => x.VariantAttributes)
-                .Include(x => x.ProductSuppliers));
+            include: query => query.Include(x => x.VariantAttributes));
 
         var response = new PaginationResult<ProductDTO>
         {
-            Records = products.Records.Select(x => mapper.Map<ProductDTO>(x)).ToList(),
+            Records = [.. products.Records.Select(MapSummaryProduct)],
             TotalRecords = products.TotalRecords,
             PageSize = products.PageSize,
             CurrentPage = products.CurrentPage
@@ -265,13 +264,11 @@ public partial class ProductService(
                      attribute.AttributeName.ToLower().Contains(term) ||
                      attribute.AttributeCode.ToLower().Contains(term)),
             cancellationToken,
-            query => query
-                .Include(x => x.VariantAttributes)
-                .Include(x => x.ProductSuppliers));
+            query => query.Include(x => x.VariantAttributes));
 
         var response = new PaginationResult<ProductDTO>
         {
-            Records = [.. products.Records.Select(x => mapper.Map<ProductDTO>(x))],
+            Records = [.. products.Records.Select(MapSummaryProduct)],
             TotalRecords = products.TotalRecords,
             PageSize = products.PageSize,
             CurrentPage = products.CurrentPage
@@ -443,6 +440,13 @@ public partial class ProductService(
         }
 
         return true;
+    }
+
+    private ProductDTO MapSummaryProduct(Product product)
+    {
+        var dto = mapper.Map<ProductDTO>(product);
+        dto.Suppliers = null;
+        return dto;
     }
 
     private static string NormalizeCodeSegment(string value, int maxLength, bool padToLength = false)

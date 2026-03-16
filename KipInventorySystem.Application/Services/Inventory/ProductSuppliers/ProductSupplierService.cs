@@ -19,10 +19,10 @@ public class ProductSupplierService(
     {
         return transactionRunner.ExecuteSerializableAsync("productSupplier.create", async token =>
         {
-            var validation = await ValidateReferencesAsync(productId, request.SupplierId, token);
-            if (validation is not null)
+            var (validationError, supplier) = await ValidateReferencesAsync(productId, request.SupplierId, token);
+            if (validationError is not null)
             {
-                return validation;
+                return validationError;
             }
 
             var repo = unitOfWork.Repository<ProductSupplier>();
@@ -58,7 +58,7 @@ public class ProductSupplierService(
                 request.IsDefault);
 
             return ServiceResponse<ProductSupplierDTO>.Created(
-                Map(entity),
+                Map(entity, supplier!),
                 "Supplier linked to product successfully.");
         }, cancellationToken);
     }
@@ -81,6 +81,12 @@ public class ProductSupplierService(
                 return ServiceResponse<ProductSupplierDTO>.NotFound("Product-supplier link was not found.");
             }
 
+            var supplier = await unitOfWork.Repository<Supplier>().GetByIdAsync(supplierId, token);
+            if (supplier is null)
+            {
+                return ServiceResponse<ProductSupplierDTO>.BadRequest("Supplier was not found.");
+            }
+
             if (request.IsDefault)
             {
                 await ClearExistingDefaultAsync(productId, repo, token);
@@ -97,7 +103,7 @@ public class ProductSupplierService(
                 request.IsDefault);
 
             return ServiceResponse<ProductSupplierDTO>.Success(
-                Map(entity),
+                Map(entity, supplier),
                 "Product-supplier link updated successfully.");
         }, cancellationToken);
     }
@@ -131,7 +137,7 @@ public class ProductSupplierService(
         }, cancellationToken);
     }
 
-    private async Task<ServiceResponse<ProductSupplierDTO>?> ValidateReferencesAsync(
+    private async Task<(ServiceResponse<ProductSupplierDTO>? Error, Supplier? Supplier)> ValidateReferencesAsync(
         Guid productId,
         Guid supplierId,
         CancellationToken cancellationToken)
@@ -139,24 +145,25 @@ public class ProductSupplierService(
         var product = await unitOfWork.Repository<Product>().GetByIdAsync(productId, cancellationToken);
         if (product is null)
         {
-            return ServiceResponse<ProductSupplierDTO>.NotFound("Product was not found.");
+            return (ServiceResponse<ProductSupplierDTO>.NotFound("Product was not found."), null);
         }
 
         var supplier = await unitOfWork.Repository<Supplier>().GetByIdAsync(supplierId, cancellationToken);
         if (supplier is null)
         {
-            return ServiceResponse<ProductSupplierDTO>.BadRequest("Supplier was not found.");
+            return (ServiceResponse<ProductSupplierDTO>.BadRequest("Supplier was not found."), null);
         }
 
-        return null;
+        return (null, supplier);
     }
 
-    private static ProductSupplierDTO Map(ProductSupplier entity)
+    private static ProductSupplierDTO Map(ProductSupplier entity, Supplier supplier)
     {
         return new ProductSupplierDTO
         {
-            ProductId = entity.ProductId,
             SupplierId = entity.SupplierId,
+            SupplierName = supplier.Name,
+            SupplierEmail = supplier.Email,
             IsDefault = entity.IsDefault
         };
     }

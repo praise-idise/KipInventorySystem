@@ -19,7 +19,8 @@ public class UpdateProductSupplierRequest
 
 public class ProductSupplierDTO
 {
-    public Guid ProductId { get; set; }
     public Guid SupplierId { get; set; }
+    public string SupplierName { get; set; } = string.Empty;
+    public string? SupplierEmail { get; set; }
     public bool IsDefault { get; set; }
 }

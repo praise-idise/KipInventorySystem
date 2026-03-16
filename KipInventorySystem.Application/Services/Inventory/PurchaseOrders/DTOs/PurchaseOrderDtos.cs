@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using KipInventorySystem.Domain.Enums;
+using System.Text.Json.Serialization;
 
 namespace KipInventorySystem.Application.Services.Inventory.PurchaseOrders.DTOs;
 
@@ -53,6 +54,8 @@ public class PurchaseOrderLineDTO
 {
     public Guid PurchaseOrderLineId { get; set; }
     public Guid ProductId { get; set; }
+    public string? ProductName { get; set; }
+    public string? Sku { get; set; }
     public int QuantityOrdered { get; set; }
     public int QuantityReceived { get; set; }
     public decimal UnitCost { get; set; }
@@ -64,9 +67,12 @@ public class PurchaseOrderDTO
     public string PurchaseOrderNumber { get; set; } = string.Empty;
     public Guid SupplierId { get; set; }
     public Guid WarehouseId { get; set; }
+    public string? WarehouseName { get; set; }
+    public string? WarehouseState { get; set; }
     public PurchaseOrderStatus Status { get; set; }
     public DateTime OrderedAt { get; set; }
     public DateTime? ExpectedArrivalDate { get; set; }
     public string? Notes { get; set; }
-    public List<PurchaseOrderLineDTO> Lines { get; set; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<PurchaseOrderLineDTO>? Lines { get; set; }
 }
