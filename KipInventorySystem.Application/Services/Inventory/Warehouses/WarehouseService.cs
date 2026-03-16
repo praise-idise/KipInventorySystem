@@ -1,3 +1,4 @@
+using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Application.Services.Inventory.Warehouses.DTOs;
 using KipInventorySystem.Domain.Entities;
 using KipInventorySystem.Domain.Interfaces;
@@ -7,18 +8,16 @@ using KipInventorySystem.Shared.Responses;
 using MapsterMapper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using System.Data;
 
 namespace KipInventorySystem.Application.Services.Inventory.Warehouses;
 
 public class WarehouseService(
     IUnitOfWork unitOfWork,
+    IInventoryTransactionRunner transactionRunner,
     IUserContext userContext,
     IMapper mapper,
     ILogger<WarehouseService> logger) : IWarehouseService
 {
-    private const int MaxCreateAttempts = 3;
-
     public async Task<ServiceResponse<WarehouseDto>> CreateAsync(
         CreateWarehouseRequest request,
         CancellationToken cancellationToken = default)
@@ -33,62 +32,31 @@ public class WarehouseService(
                 $"A warehouse with name '{normalizedName}' already exists.");
         }
 
-        for (var attempt = 1; attempt <= MaxCreateAttempts; attempt++)
+        return await transactionRunner.ExecuteSerializableAsync("warehouse.create", async token =>
         {
-            try
+            if (await WarehouseNameExistsAsync(warehouseRepo, normalizedName, token))
             {
-                await unitOfWork.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-
-                if (await WarehouseNameExistsAsync(warehouseRepo, normalizedName, cancellationToken))
-                {
-                    await unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return ServiceResponse<WarehouseDto>.Conflict(
-                        $"A warehouse with name '{normalizedName}' already exists.");
-                }
-
-                var warehouse = mapper.Map<Warehouse>(request);
-                warehouse.Code = await GenerateNextWarehouseCodeAsync(counterRepo, warehouse.State, cancellationToken);
-                warehouse.CreatedAt = DateTime.UtcNow;
-                warehouse.UpdatedAt = DateTime.UtcNow;
-
-                await warehouseRepo.AddAsync(warehouse, cancellationToken);
-                await unitOfWork.SaveChangesAsync(cancellationToken);
-                await unitOfWork.CommitTransactionAsync(cancellationToken);
-
-                logger.LogInformation(
-                    "Inventory audit: operation={Operation}, actor={Actor}, entity=Warehouse, entityId={EntityId}",
-                    "CreateWarehouse",
-                    userContext.GetCurrentUser().UserId,
-                    warehouse.WarehouseId);
-
-                return ServiceResponse<WarehouseDto>
-                .Created(mapper.Map<WarehouseDto>(warehouse), "Warehouse created successfully.");
+                return ServiceResponse<WarehouseDto>.Conflict(
+                    $"A warehouse with name '{normalizedName}' already exists.");
             }
-            catch (Exception ex) when (IsCreateRetryable(ex) && attempt < MaxCreateAttempts)
-            {
-                await unitOfWork.RollbackTransactionAsync(cancellationToken);
 
-                if (await WarehouseNameExistsAsync(warehouseRepo, normalizedName, cancellationToken))
-                {
-                    return ServiceResponse<WarehouseDto>.Conflict(
-                        $"A warehouse with name '{normalizedName}' already exists.");
-                }
+            var warehouse = mapper.Map<Warehouse>(request);
+            warehouse.Code = await GenerateNextWarehouseCodeAsync(counterRepo, warehouse.State, token);
+            warehouse.CreatedAt = DateTime.UtcNow;
+            warehouse.UpdatedAt = DateTime.UtcNow;
 
-                logger.LogWarning(
-                    ex,
-                    "Warehouse creation concurrency conflict on attempt {Attempt}/{MaxAttempts}. Retrying.",
-                    attempt,
-                    MaxCreateAttempts);
-            }
-            catch
-            {
-                await unitOfWork.RollbackTransactionAsync(cancellationToken);
-                throw;
-            }
-        }
+            await warehouseRepo.AddAsync(warehouse, token);
 
-        return ServiceResponse<WarehouseDto>
-        .Unavailable("The service is temporarily busy. Please retry in a moment");
+            logger.LogInformation(
+                "Inventory audit: operation={Operation}, actor={Actor}, entity=Warehouse, entityId={EntityId}",
+                "CreateWarehouse",
+                userContext.GetCurrentUser().UserId,
+                warehouse.WarehouseId);
+
+            return ServiceResponse<WarehouseDto>.Created(
+                mapper.Map<WarehouseDto>(warehouse),
+                "Warehouse created successfully.");
+        }, cancellationToken);
     }
 
     public async Task<ServiceResponse<WarehouseDto>> UpdateAsync(
@@ -315,19 +283,6 @@ public class WarehouseService(
 
         return exception.InnerException is not null && IsUniqueConstraintViolation(exception.InnerException);
     }
-
-    private static bool IsRetryableTransactionFailure(Exception exception)
-    {
-        if (TryGetSqlState(exception, out var sqlState))
-        {
-            return sqlState is "40001" or "40P01";
-        }
-
-        return exception.InnerException is not null && IsRetryableTransactionFailure(exception.InnerException);
-    }
-
-    private static bool IsCreateRetryable(Exception exception)
-        => IsUniqueConstraintViolation(exception) || IsRetryableTransactionFailure(exception);
 
     private static bool TryGetSqlState(Exception? exception, out string? sqlState)
     {

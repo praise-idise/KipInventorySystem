@@ -19,8 +19,8 @@ public class InventoryMapper : IRegister
         config.NewConfig<Product, ProductDTO>()
             .Map(dest => dest.VariantAttributes, src => src.VariantAttributes.OrderBy(x => x.SortOrder));
 
-        config.NewConfig<PurchaseOrderLine, PurchaseOrderLineDto>();
-        config.NewConfig<PurchaseOrder, PurchaseOrderDto>();
+        config.NewConfig<PurchaseOrderLine, PurchaseOrderLineDTO>();
+        config.NewConfig<PurchaseOrder, PurchaseOrderDTO>();
 
         config.NewConfig<TransferRequestLine, TransferRequestLineDto>();
         config.NewConfig<TransferRequest, TransferRequestDto>();

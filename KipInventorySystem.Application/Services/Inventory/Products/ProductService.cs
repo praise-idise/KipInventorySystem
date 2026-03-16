@@ -1,3 +1,4 @@
+using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Application.Services.Inventory.Products.DTOs;
 using KipInventorySystem.Domain.Entities;
 using KipInventorySystem.Domain.Interfaces;
@@ -13,11 +14,12 @@ namespace KipInventorySystem.Application.Services.Inventory.Products;
 
 public partial class ProductService(
     IUnitOfWork unitOfWork,
+    IInventoryTransactionRunner transactionRunner,
+    IIdempotencyService idempotencyService,
     IUserContext userContext,
     IMapper mapper,
     ILogger<ProductService> logger) : IProductService
 {
-    private const int MaxCreateAttempts = 3;
     private static readonly HashSet<string> IgnoredItemCodeTokens =
     [
         "THE",
@@ -34,32 +36,41 @@ public partial class ProductService(
         "PACK"
     ];
 
-    public async Task<ServiceResponse<ProductDTO>> CreateAsync(
+    public Task<ServiceResponse<ProductDTO>> CreateAsync(
         CreateProductDTO request,
+        string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        var productRepo = unitOfWork.Repository<Product>();
-        var supplierRepo = unitOfWork.Repository<Supplier>();
-
-        var supplier = await supplierRepo.GetByIdAsync(request.DefaultSupplierId, cancellationToken);
-        if (supplier is null)
-        {
-            return ServiceResponse<ProductDTO>.BadRequest("Default supplier was not found.");
-        }
-
-        for (var attempt = 1; attempt <= MaxCreateAttempts; attempt++)
-        {
-            var product = mapper.Map<Product>(request);
-            NormalizeScalarFields(product);
-            product.VariantAttributes = [.. NormalizeVariantAttributes(product.VariantAttributes)];
-            product.Sku = await GenerateNextSkuAsync(productRepo, product, cancellationToken);
-            product.CreatedAt = DateTime.UtcNow;
-            product.UpdatedAt = DateTime.UtcNow;
-
-            try
+        return idempotencyService.ExecuteAsync<CreateProductDTO, ProductDTO>(
+            "product-create",
+            idempotencyKey,
+            request,
+            token => transactionRunner.ExecuteSerializableAsync("product.create", async _ =>
             {
-                await productRepo.AddAsync(product, cancellationToken);
-                await unitOfWork.SaveChangesAsync(cancellationToken);
+                var productRepo = unitOfWork.Repository<Product>();
+                var supplierRepo = unitOfWork.Repository<Supplier>();
+
+                var supplier = await supplierRepo.GetByIdAsync(request.DefaultSupplierId, token);
+                if (supplier is null)
+                {
+                    return ServiceResponse<ProductDTO>.BadRequest("Default supplier was not found.");
+                }
+
+                var product = mapper.Map<Product>(request);
+                NormalizeScalarFields(product);
+                product.VariantAttributes = [.. NormalizeVariantAttributes(product.VariantAttributes)];
+
+                if (await ExistsBusinessDuplicateAsync(productRepo, product, token))
+                {
+                    return ServiceResponse<ProductDTO>.Conflict(
+                        "A product with the same category, brand, name, unit of measure, and variant attributes already exists.");
+                }
+
+                product.Sku = await GenerateNextSkuAsync(productRepo, product, token);
+                product.CreatedAt = DateTime.UtcNow;
+                product.UpdatedAt = DateTime.UtcNow;
+
+                await productRepo.AddAsync(product, token);
 
                 logger.LogInformation(
                     "Inventory audit: operation={Operation}, actor={Actor}, entity=Product, entityId={EntityId}, sku={Sku}",
@@ -71,20 +82,8 @@ public partial class ProductService(
                 return ServiceResponse<ProductDTO>.Created(
                     mapper.Map<ProductDTO>(product),
                     "Product created successfully.");
-            }
-            catch (Exception ex) when (IsUniqueConstraintViolation(ex) && attempt < MaxCreateAttempts)
-            {
-                productRepo.Remove(product);
-                logger.LogWarning(
-                    ex,
-                    "Product SKU generation collision on attempt {Attempt}/{MaxAttempts}. Retrying.",
-                    attempt,
-                    MaxCreateAttempts);
-            }
-        }
-
-        return ServiceResponse<ProductDTO>.Conflict(
-            "Unable to generate a unique SKU. Please retry.");
+            }, token),
+            cancellationToken);
     }
 
     public async Task<ServiceResponse<ProductDTO>> UpdateAsync(
@@ -316,6 +315,49 @@ public partial class ProductService(
         return maxSequence == 0 ? baseSku : $"{baseSku}-{maxSequence + 1:00}";
     }
 
+    private static async Task<bool> ExistsBusinessDuplicateAsync(
+        IBaseRepository<Product> productRepo,
+        Product normalizedProduct,
+        CancellationToken cancellationToken,
+        Guid? productIdToIgnore = null)
+    {
+        var normalizedName = normalizedProduct.Name.Trim().ToUpperInvariant();
+        var normalizedUnitOfMeasure = normalizedProduct.UnitOfMeasure.Trim().ToUpperInvariant();
+
+        var candidates = await productRepo.WhereAsync(
+            x => x.CategoryCode == normalizedProduct.CategoryCode &&
+                 x.BrandCode == normalizedProduct.BrandCode &&
+                 x.Name.ToUpper() == normalizedName &&
+                 x.UnitOfMeasure.ToUpper() == normalizedUnitOfMeasure,
+            cancellationToken);
+
+        foreach (var candidate in candidates)
+        {
+            if (productIdToIgnore.HasValue && candidate.ProductId == productIdToIgnore.Value)
+            {
+                continue;
+            }
+
+            var existing = await productRepo.GetByIdAsync(
+                candidate.ProductId,
+                query => query.Include(x => x.VariantAttributes),
+                cancellationToken);
+
+            if (existing is null)
+            {
+                continue;
+            }
+
+            var normalizedExistingAttributes = NormalizeVariantAttributes(existing.VariantAttributes);
+            if (VariantAttributesMatch(normalizedProduct.VariantAttributes, normalizedExistingAttributes))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static int? ParseSkuSequence(string sku, string baseSku)
     {
         if (string.Equals(sku, baseSku, StringComparison.Ordinal))
@@ -388,6 +430,31 @@ public partial class ProductService(
             })
             .OrderBy(attribute => attribute.SortOrder)
             .ThenBy(attribute => attribute.AttributeName)];
+    }
+
+    private static bool VariantAttributesMatch(
+        IEnumerable<ProductVariantAttribute> left,
+        IEnumerable<ProductVariantAttribute> right)
+    {
+        var leftList = left.ToList();
+        var rightList = right.ToList();
+
+        if (leftList.Count != rightList.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < leftList.Count; i++)
+        {
+            if (!string.Equals(leftList[i].AttributeName, rightList[i].AttributeName, StringComparison.Ordinal) ||
+                !string.Equals(leftList[i].AttributeCode, rightList[i].AttributeCode, StringComparison.Ordinal) ||
+                leftList[i].SortOrder != rightList[i].SortOrder)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static string NormalizeCodeSegment(string value, int maxLength, bool padToLength = false)
@@ -477,33 +544,6 @@ public partial class ProductService(
         }
 
         return token[..Math.Min(3, token.Length)];
-    }
-
-    private static bool IsUniqueConstraintViolation(Exception exception)
-    {
-        if (exception is DbUpdateException dbUpdateException)
-        {
-            if (TryGetSqlState(dbUpdateException.InnerException, out var sqlState) &&
-                sqlState == "23505")
-            {
-                return true;
-            }
-
-            var message = dbUpdateException.InnerException?.Message ?? dbUpdateException.Message;
-            return message.Contains("duplicate key value", StringComparison.OrdinalIgnoreCase) ||
-                   message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase);
-        }
-
-        var innerMessage = exception.InnerException?.Message;
-        return !string.IsNullOrWhiteSpace(innerMessage) &&
-               (innerMessage.Contains("duplicate key value", StringComparison.OrdinalIgnoreCase) ||
-                innerMessage.Contains("unique constraint", StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static bool TryGetSqlState(Exception? exception, out string? sqlState)
-    {
-        sqlState = exception?.GetType().GetProperty("SqlState")?.GetValue(exception) as string;
-        return !string.IsNullOrWhiteSpace(sqlState);
     }
 
     [GeneratedRegex("[A-Za-z0-9]+")]

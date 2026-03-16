@@ -8,6 +8,7 @@ public interface IProductService
 {
     Task<ServiceResponse<ProductDTO>> CreateAsync(
         CreateProductDTO request,
+        string idempotencyKey,
         CancellationToken cancellationToken = default);
 
     Task<ServiceResponse<ProductDTO>> UpdateAsync(

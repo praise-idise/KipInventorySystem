@@ -68,6 +68,15 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .Property(e => e.StateCode)
             .HasMaxLength(3);
 
+        modelBuilder.Entity<Supplier>()
+            .HasIndex(e => e.Name)
+            .IsUnique();
+
+        modelBuilder.Entity<Supplier>()
+            .HasIndex(e => e.Email)
+            .HasFilter("\"Email\" IS NOT NULL")
+            .IsUnique();
+
         modelBuilder.Entity<Product>()
             .HasIndex(e => e.Sku)
             .IsUnique();
@@ -77,6 +86,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .WithOne(e => e.Product)
             .HasForeignKey(e => e.ProductId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ProductVariantAttribute>()
+            .HasQueryFilter(e => !e.Product.IsDeleted);
 
         modelBuilder.Entity<ProductVariantAttribute>()
             .HasIndex(e => new { e.ProductId, e.AttributeName })

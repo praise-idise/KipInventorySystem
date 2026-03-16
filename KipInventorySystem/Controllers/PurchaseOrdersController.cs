@@ -33,6 +33,7 @@ public class PurchaseOrdersController(IPurchaseOrderService purchaseOrderService
 
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> CreateDraft(
         [FromBody] CreatePurchaseOrderDraftRequest request,
         CancellationToken cancellationToken)
@@ -63,6 +64,7 @@ public class PurchaseOrdersController(IPurchaseOrderService purchaseOrderService
 
     [HttpPost("{purchaseOrderId:guid}/submit")]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Submit(Guid purchaseOrderId, CancellationToken cancellationToken)
     {
         if (!TryGetIdempotencyKey(out var key, out var error))

@@ -33,12 +33,18 @@ public class ProductsController(IProductService productService) : BaseController
 
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Create([FromBody] CreateProductDTO request, CancellationToken cancellationToken)
     {
         var validation = ValidateModelState();
         if (validation != null) return validation;
 
-        var response = await productService.CreateAsync(request, cancellationToken);
+        if (!TryGetIdempotencyKey(out var key, out var error))
+        {
+            return error!;
+        }
+
+        var response = await productService.CreateAsync(request, key, cancellationToken);
         return ComputeResponse(response);
     }
 

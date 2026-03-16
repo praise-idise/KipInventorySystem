@@ -115,6 +115,7 @@ public static class WebApplicationBuilderExtensions
                 Version = "v1",
                 Description = "API for your application"
             });
+            options.OperationFilter<RequiresIdempotencyKeyOperationFilter>();
 
             options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {

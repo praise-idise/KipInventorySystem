@@ -3,6 +3,7 @@ using System.Diagnostics;
 using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Domain.Interfaces;
 using KipInventorySystem.Shared.Responses;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -65,7 +66,7 @@ public class InventoryTransactionRunner(
                 activity?.SetTag("inventory.success", response.Succeeded);
                 return response;
             }
-            catch (Exception ex) when (IsRetryableSerializationFailure(ex) && attempt < MaxRetries)
+            catch (Exception ex) when (IsRetryableTransactionFailure(ex) && attempt < MaxRetries)
             {
                 InventoryTelemetry.CommandRetryCounter.Add(1, operationTag);
                 logger.LogWarning(
@@ -78,14 +79,14 @@ public class InventoryTransactionRunner(
                 await unitOfWork.RollbackTransactionAsync(cancellationToken);
                 await Task.Delay(TimeSpan.FromMilliseconds(BaseDelay.TotalMilliseconds * attempt), cancellationToken);
             }
-            catch (Exception ex) when (IsRetryableSerializationFailure(ex))
+            catch (Exception ex) when (IsRetryableTransactionFailure(ex))
             {
                 await unitOfWork.RollbackTransactionAsync(cancellationToken);
                 InventoryTelemetry.CommandFailureCounter.Add(1, operationTag);
                 InventoryTelemetry.CommandDurationMs.Record(sw.Elapsed.TotalMilliseconds, operationTag);
                 logger.LogWarning(
                     ex,
-                    "Inventory transaction concurrency conflict for {OperationName} after retries.",
+                    "Inventory transaction conflict for {OperationName} after retries.",
                     operationName);
 
                 return CreateConflict<TResponse>(
@@ -107,6 +108,11 @@ public class InventoryTransactionRunner(
         return CreateConflict<TResponse>("The operation conflicted with another concurrent transaction. Please retry.");
     }
 
+    private static bool IsRetryableTransactionFailure(Exception exception)
+    {
+        return IsRetryableSerializationFailure(exception) || IsUniqueConstraintViolation(exception);
+    }
+
     private static bool IsRetryableSerializationFailure(Exception exception)
     {
         if (exception is NpgsqlException npgsqlException)
@@ -125,6 +131,28 @@ public class InventoryTransactionRunner(
     private static bool IsRetryableNpgsqlState(string? sqlState)
     {
         return sqlState is "40001" or "40P01";
+    }
+
+    private static bool IsUniqueConstraintViolation(Exception exception)
+    {
+        if (exception is DbUpdateException dbUpdateException)
+        {
+            if (dbUpdateException.InnerException is NpgsqlException innerNpgsql)
+            {
+                return innerNpgsql.SqlState == PostgresErrorCodes.UniqueViolation;
+            }
+
+            var message = dbUpdateException.InnerException?.Message ?? dbUpdateException.Message;
+            return message.Contains("duplicate key value", StringComparison.OrdinalIgnoreCase) ||
+                   message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (exception is NpgsqlException npgsqlException)
+        {
+            return npgsqlException.SqlState == PostgresErrorCodes.UniqueViolation;
+        }
+
+        return exception.InnerException is not null && IsUniqueConstraintViolation(exception.InnerException);
     }
 
     private static TResponse CreateError<TResponse>(string message) where TResponse : ServiceResponseBase

@@ -13,6 +13,7 @@ public class GoodsReceiptsController(IGoodsReceiptService goodsReceiptService) :
 {
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Receive([FromBody] ReceiveGoodsRequest request, CancellationToken cancellationToken)
     {
         var validation = ValidateModelState();

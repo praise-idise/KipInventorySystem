@@ -20,12 +20,12 @@ public class PurchaseOrderService(
     IMapper mapper,
     ILogger<PurchaseOrderService> logger) : IPurchaseOrderService
 {
-    public Task<ServiceResponse<PurchaseOrderDto>> CreateDraftAsync(
+    public Task<ServiceResponse<PurchaseOrderDTO>> CreateDraftAsync(
         CreatePurchaseOrderDraftRequest request,
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<CreatePurchaseOrderDraftRequest, PurchaseOrderDto>(
+        return idempotencyService.ExecuteAsync(
             "purchase-order-create",
             idempotencyKey,
             request,
@@ -34,7 +34,7 @@ public class PurchaseOrderService(
                 var validation = await ValidateReferencesAsync(
                     request.SupplierId,
                     request.WarehouseId,
-                    request.Lines.Select(x => x.ProductId).ToList(),
+                    [.. request.Lines.Select(x => x.ProductId)],
                     token);
 
                 if (validation is not null)
@@ -44,7 +44,7 @@ public class PurchaseOrderService(
 
                 if (HasDuplicateProducts(request.Lines.Select(x => x.ProductId)))
                 {
-                    return ServiceResponse<PurchaseOrderDto>.BadRequest("Duplicate products are not allowed in a purchase order.");
+                    return ServiceResponse<PurchaseOrderDTO>.BadRequest("Duplicate products are not allowed in a purchase order.");
                 }
 
                 var po = mapper.Map<PurchaseOrder>(request);
@@ -77,14 +77,14 @@ public class PurchaseOrderService(
                     po.PurchaseOrderId,
                     po.Status);
 
-                return ServiceResponse<PurchaseOrderDto>.Created(
-                    mapper.Map<PurchaseOrderDto>(po),
+                return ServiceResponse<PurchaseOrderDTO>.Created(
+                    mapper.Map<PurchaseOrderDTO>(po),
                     "Purchase order draft created.");
             }, token),
             cancellationToken);
     }
 
-    public Task<ServiceResponse<PurchaseOrderDto>> UpdateDraftAsync(
+    public Task<ServiceResponse<PurchaseOrderDTO>> UpdateDraftAsync(
         Guid purchaseOrderId,
         UpdatePurchaseOrderDraftRequest request,
         CancellationToken cancellationToken = default)
@@ -96,17 +96,17 @@ public class PurchaseOrderService(
             var po = await poRepo.GetByIdAsync(purchaseOrderId, token);
             if (po is null)
             {
-                return ServiceResponse<PurchaseOrderDto>.NotFound("Purchase order was not found.");
+                return ServiceResponse<PurchaseOrderDTO>.NotFound("Purchase order was not found.");
             }
 
             if (po.Status != PurchaseOrderStatus.Draft)
             {
-                return ServiceResponse<PurchaseOrderDto>.Conflict("Only draft purchase orders can be updated.");
+                return ServiceResponse<PurchaseOrderDTO>.Conflict("Only draft purchase orders can be updated.");
             }
 
             if (request.Lines is not null && HasDuplicateProducts(request.Lines.Select(x => x.ProductId)))
             {
-                return ServiceResponse<PurchaseOrderDto>.BadRequest("Duplicate products are not allowed in a purchase order.");
+                return ServiceResponse<PurchaseOrderDTO>.BadRequest("Duplicate products are not allowed in a purchase order.");
             }
 
             if (request.SupplierId.HasValue)
@@ -114,7 +114,7 @@ public class PurchaseOrderService(
                 var supplier = await unitOfWork.Repository<Supplier>().GetByIdAsync(request.SupplierId.Value, token);
                 if (supplier is null)
                 {
-                    return ServiceResponse<PurchaseOrderDto>.BadRequest("Supplier was not found.");
+                    return ServiceResponse<PurchaseOrderDTO>.BadRequest("Supplier was not found.");
                 }
             }
 
@@ -123,7 +123,7 @@ public class PurchaseOrderService(
                 var warehouse = await unitOfWork.Repository<Warehouse>().GetByIdAsync(request.WarehouseId.Value, token);
                 if (warehouse is null)
                 {
-                    return ServiceResponse<PurchaseOrderDto>.BadRequest("Warehouse was not found.");
+                    return ServiceResponse<PurchaseOrderDTO>.BadRequest("Warehouse was not found.");
                 }
             }
 
@@ -135,7 +135,7 @@ public class PurchaseOrderService(
                     var product = await productRepo.GetByIdAsync(productId, token);
                     if (product is null)
                     {
-                        return ServiceResponse<PurchaseOrderDto>.BadRequest($"Product '{productId}' was not found.");
+                        return ServiceResponse<PurchaseOrderDTO>.BadRequest($"Product '{productId}' was not found.");
                     }
                 }
             }
@@ -194,18 +194,18 @@ public class PurchaseOrderService(
                 userContext.GetCurrentUser().UserId,
                 po.PurchaseOrderId);
 
-            return ServiceResponse<PurchaseOrderDto>.Success(
-                mapper.Map<PurchaseOrderDto>(po),
+            return ServiceResponse<PurchaseOrderDTO>.Success(
+                mapper.Map<PurchaseOrderDTO>(po),
                 "Purchase order draft updated.");
         }, cancellationToken);
     }
 
-    public Task<ServiceResponse<PurchaseOrderDto>> SubmitAsync(
+    public Task<ServiceResponse<PurchaseOrderDTO>> SubmitAsync(
         Guid purchaseOrderId,
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<Guid, PurchaseOrderDto>(
+        return idempotencyService.ExecuteAsync(
             "purchase-order-submit",
             idempotencyKey,
             purchaseOrderId,
@@ -217,18 +217,18 @@ public class PurchaseOrderService(
                 var po = await poRepo.GetByIdAsync(purchaseOrderId, token);
                 if (po is null)
                 {
-                    return ServiceResponse<PurchaseOrderDto>.NotFound("Purchase order was not found.");
+                    return ServiceResponse<PurchaseOrderDTO>.NotFound("Purchase order was not found.");
                 }
 
                 var lines = await lineRepo.WhereAsync(x => x.PurchaseOrderId == purchaseOrderId, token);
                 if (lines.Count == 0)
                 {
-                    return ServiceResponse<PurchaseOrderDto>.BadRequest("Cannot submit a purchase order without lines.");
+                    return ServiceResponse<PurchaseOrderDTO>.BadRequest("Cannot submit a purchase order without lines.");
                 }
 
                 if (lines.Any(x => x.QuantityOrdered <= 0))
                 {
-                    return ServiceResponse<PurchaseOrderDto>.BadRequest("Purchase order lines must have quantity greater than zero.");
+                    return ServiceResponse<PurchaseOrderDTO>.BadRequest("Purchase order lines must have quantity greater than zero.");
                 }
 
                 if (po.Status == PurchaseOrderStatus.Submitted ||
@@ -236,14 +236,14 @@ public class PurchaseOrderService(
                     po.Status == PurchaseOrderStatus.Received)
                 {
                     po.Lines = lines;
-                    return ServiceResponse<PurchaseOrderDto>.Success(
-                        mapper.Map<PurchaseOrderDto>(po),
+                    return ServiceResponse<PurchaseOrderDTO>.Success(
+                        mapper.Map<PurchaseOrderDTO>(po),
                         "Purchase order already submitted.");
                 }
 
                 if (po.Status != PurchaseOrderStatus.Draft)
                 {
-                    return ServiceResponse<PurchaseOrderDto>.Conflict("Only draft purchase orders can be submitted.");
+                    return ServiceResponse<PurchaseOrderDTO>.Conflict("Only draft purchase orders can be submitted.");
                 }
 
                 po.Status = PurchaseOrderStatus.Submitted;
@@ -260,28 +260,28 @@ public class PurchaseOrderService(
                     PurchaseOrderStatus.Draft,
                     po.Status);
 
-                return ServiceResponse<PurchaseOrderDto>.Success(
-                    mapper.Map<PurchaseOrderDto>(po),
+                return ServiceResponse<PurchaseOrderDTO>.Success(
+                    mapper.Map<PurchaseOrderDTO>(po),
                     "Purchase order submitted.");
             }, token),
             cancellationToken);
     }
 
-    public async Task<ServiceResponse<PurchaseOrderDto>> GetByIdAsync(Guid purchaseOrderId, CancellationToken cancellationToken = default)
+    public async Task<ServiceResponse<PurchaseOrderDTO>> GetByIdAsync(Guid purchaseOrderId, CancellationToken cancellationToken = default)
     {
         var poRepo = unitOfWork.Repository<PurchaseOrder>();
         var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
         var po = await poRepo.GetByIdAsync(purchaseOrderId, cancellationToken);
         if (po is null)
         {
-            return ServiceResponse<PurchaseOrderDto>.NotFound("Purchase order was not found.");
+            return ServiceResponse<PurchaseOrderDTO>.NotFound("Purchase order was not found.");
         }
 
         po.Lines = await lineRepo.WhereAsync(x => x.PurchaseOrderId == purchaseOrderId, cancellationToken);
-        return ServiceResponse<PurchaseOrderDto>.Success(mapper.Map<PurchaseOrderDto>(po));
+        return ServiceResponse<PurchaseOrderDTO>.Success(mapper.Map<PurchaseOrderDTO>(po));
     }
 
-    public async Task<ServiceResponse<PaginationResult<PurchaseOrderDto>>> GetAllAsync(
+    public async Task<ServiceResponse<PaginationResult<PurchaseOrderDTO>>> GetAllAsync(
         RequestParameters parameters,
         CancellationToken cancellationToken = default)
     {
@@ -308,18 +308,18 @@ public class PurchaseOrderService(
             }
         }
 
-        var response = new PaginationResult<PurchaseOrderDto>
+        var response = new PaginationResult<PurchaseOrderDTO>
         {
-            Records = orders.Select(x => mapper.Map<PurchaseOrderDto>(x)).ToList(),
+            Records = [.. orders.Select(x => mapper.Map<PurchaseOrderDTO>(x))],
             TotalRecords = pagedOrders.TotalRecords,
             PageSize = pagedOrders.PageSize,
             CurrentPage = pagedOrders.CurrentPage
         };
 
-        return ServiceResponse<PaginationResult<PurchaseOrderDto>>.Success(response);
+        return ServiceResponse<PaginationResult<PurchaseOrderDTO>>.Success(response);
     }
 
-    public async Task<ServiceResponse<PaginationResult<PurchaseOrderDto>>> SearchAsync(
+    public async Task<ServiceResponse<PaginationResult<PurchaseOrderDTO>>> SearchAsync(
         string? searchTerm,
         RequestParameters parameters,
         CancellationToken cancellationToken = default)
@@ -355,18 +355,18 @@ public class PurchaseOrderService(
             }
         }
 
-        var response = new PaginationResult<PurchaseOrderDto>
+        var response = new PaginationResult<PurchaseOrderDTO>
         {
-            Records = orders.Select(x => mapper.Map<PurchaseOrderDto>(x)).ToList(),
+            Records = orders.Select(x => mapper.Map<PurchaseOrderDTO>(x)).ToList(),
             TotalRecords = pagedOrders.TotalRecords,
             PageSize = pagedOrders.PageSize,
             CurrentPage = pagedOrders.CurrentPage
         };
 
-        return ServiceResponse<PaginationResult<PurchaseOrderDto>>.Success(response);
+        return ServiceResponse<PaginationResult<PurchaseOrderDTO>>.Success(response);
     }
 
-    private async Task<ServiceResponse<PurchaseOrderDto>?> ValidateReferencesAsync(
+    private async Task<ServiceResponse<PurchaseOrderDTO>?> ValidateReferencesAsync(
         Guid supplierId,
         Guid warehouseId,
         List<Guid> productIds,
@@ -375,13 +375,13 @@ public class PurchaseOrderService(
         var supplier = await unitOfWork.Repository<Supplier>().GetByIdAsync(supplierId, cancellationToken);
         if (supplier is null)
         {
-            return ServiceResponse<PurchaseOrderDto>.BadRequest("Supplier was not found.");
+            return ServiceResponse<PurchaseOrderDTO>.BadRequest("Supplier was not found.");
         }
 
         var warehouse = await unitOfWork.Repository<Warehouse>().GetByIdAsync(warehouseId, cancellationToken);
         if (warehouse is null)
         {
-            return ServiceResponse<PurchaseOrderDto>.BadRequest("Warehouse was not found.");
+            return ServiceResponse<PurchaseOrderDTO>.BadRequest("Warehouse was not found.");
         }
 
         var productRepo = unitOfWork.Repository<Product>();
@@ -390,7 +390,7 @@ public class PurchaseOrderService(
             var product = await productRepo.GetByIdAsync(productId, cancellationToken);
             if (product is null)
             {
-                return ServiceResponse<PurchaseOrderDto>.BadRequest($"Product '{productId}' was not found.");
+                return ServiceResponse<PurchaseOrderDTO>.BadRequest($"Product '{productId}' was not found.");
             }
         }
 

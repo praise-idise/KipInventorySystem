@@ -33,6 +33,7 @@ public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentS
 
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> CreateDraft(
         [FromBody] CreateStockAdjustmentDraftRequest request,
         CancellationToken cancellationToken)
@@ -50,6 +51,7 @@ public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentS
 
     [HttpPost("{stockAdjustmentId:guid}/submit")]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Submit(Guid stockAdjustmentId, CancellationToken cancellationToken)
     {
         if (!TryGetIdempotencyKey(out var key, out var error))
@@ -62,6 +64,7 @@ public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentS
 
     [HttpPost("{stockAdjustmentId:guid}/approve")]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Approve(Guid stockAdjustmentId, CancellationToken cancellationToken)
     {
         if (!TryGetIdempotencyKey(out var key, out var error))
@@ -74,6 +77,7 @@ public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentS
 
     [HttpPost("{stockAdjustmentId:guid}/apply")]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Apply(Guid stockAdjustmentId, CancellationToken cancellationToken)
     {
         if (!TryGetIdempotencyKey(out var key, out var error))
@@ -86,6 +90,7 @@ public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentS
 
     [HttpPost("{stockAdjustmentId:guid}/cancel")]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Cancel(Guid stockAdjustmentId, CancellationToken cancellationToken)
     {
         if (!TryGetIdempotencyKey(out var key, out var error))

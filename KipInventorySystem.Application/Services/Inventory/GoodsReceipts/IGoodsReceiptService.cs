@@ -6,7 +6,7 @@ namespace KipInventorySystem.Application.Services.Inventory.GoodsReceipts;
 
 public interface IGoodsReceiptService
 {
-    Task<ServiceResponse<PurchaseOrderDto>> ReceiveAsync(
+    Task<ServiceResponse<PurchaseOrderDTO>> ReceiveAsync(
         ReceiveGoodsRequest request,
         string idempotencyKey,
         CancellationToken cancellationToken = default);

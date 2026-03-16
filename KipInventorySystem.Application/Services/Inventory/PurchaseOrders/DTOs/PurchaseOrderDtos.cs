@@ -49,7 +49,7 @@ public class CreatePurchaseOrderLineRequest
     public decimal UnitCost { get; set; }
 }
 
-public class PurchaseOrderLineDto
+public class PurchaseOrderLineDTO
 {
     public Guid PurchaseOrderLineId { get; set; }
     public Guid ProductId { get; set; }
@@ -58,7 +58,7 @@ public class PurchaseOrderLineDto
     public decimal UnitCost { get; set; }
 }
 
-public class PurchaseOrderDto
+public class PurchaseOrderDTO
 {
     public Guid PurchaseOrderId { get; set; }
     public string PurchaseOrderNumber { get; set; } = string.Empty;
@@ -68,5 +68,5 @@ public class PurchaseOrderDto
     public DateTime OrderedAt { get; set; }
     public DateTime? ExpectedArrivalDate { get; set; }
     public string? Notes { get; set; }
-    public List<PurchaseOrderLineDto> Lines { get; set; } = [];
+    public List<PurchaseOrderLineDTO> Lines { get; set; } = [];
 }

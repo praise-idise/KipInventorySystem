@@ -30,16 +30,16 @@ public class InventorySupplierService(
         {
             return ServiceResponse<SupplierDto>.Conflict(
                 $"A supplier with name '{newSupplier.Name}' or email '{newSupplier.Email}' already exists.");
-        }
+        } 
 
         var deletedExisting = (await supplierRepo.WhereIncludingDeletedAsync(
-            x => x.Name == newSupplier.Name,
+            x => x.Name == newSupplier.Name || x.Email == newSupplier.Email,
             cancellationToken)).Any(x => x.IsDeleted);
 
         if (deletedExisting)
         {
             return ServiceResponse<SupplierDto>.Conflict(
-                $"Supplier name '{newSupplier.Name}' is reserved by a soft-deleted supplier.");
+                $"Supplier name '{newSupplier.Name}' or email '{newSupplier.Email}' is reserved by a soft-deleted supplier.");
         }
 
         var supplier = newSupplier;

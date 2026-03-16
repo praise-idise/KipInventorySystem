@@ -19,12 +19,12 @@ public class GoodsReceiptService(
     IMapper mapper,
     ILogger<GoodsReceiptService> logger) : IGoodsReceiptService
 {
-    public Task<ServiceResponse<PurchaseOrderDto>> ReceiveAsync(
+    public Task<ServiceResponse<PurchaseOrderDTO>> ReceiveAsync(
         ReceiveGoodsRequest request,
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<ReceiveGoodsRequest, PurchaseOrderDto>(
+        return idempotencyService.ExecuteAsync<ReceiveGoodsRequest, PurchaseOrderDTO>(
             "goods-receipt-receive",
             idempotencyKey,
             request,
@@ -38,19 +38,19 @@ public class GoodsReceiptService(
                 var po = await poRepo.GetByIdAsync(request.PurchaseOrderId, token);
                 if (po is null)
                 {
-                    return ServiceResponse<PurchaseOrderDto>.NotFound("Purchase order was not found.");
+                    return ServiceResponse<PurchaseOrderDTO>.NotFound("Purchase order was not found.");
                 }
 
                 if (po.Status is not PurchaseOrderStatus.Submitted and not PurchaseOrderStatus.PartiallyReceived)
                 {
-                    return ServiceResponse<PurchaseOrderDto>.Conflict(
+                    return ServiceResponse<PurchaseOrderDTO>.Conflict(
                         "Goods can only be received for submitted or partially received purchase orders.");
                 }
 
                 var poLines = await lineRepo.WhereAsync(x => x.PurchaseOrderId == request.PurchaseOrderId, token);
                 if (poLines.Count == 0)
                 {
-                    return ServiceResponse<PurchaseOrderDto>.BadRequest("Purchase order has no lines.");
+                    return ServiceResponse<PurchaseOrderDTO>.BadRequest("Purchase order has no lines.");
                 }
 
                 var requestLinesById = request.Lines.ToDictionary(x => x.PurchaseOrderLineId, x => x);
@@ -61,14 +61,14 @@ public class GoodsReceiptService(
                     var poLine = poLines.FirstOrDefault(x => x.PurchaseOrderLineId == requestLine.PurchaseOrderLineId);
                     if (poLine is null)
                     {
-                        return ServiceResponse<PurchaseOrderDto>.BadRequest(
+                        return ServiceResponse<PurchaseOrderDTO>.BadRequest(
                             $"Purchase order line '{requestLine.PurchaseOrderLineId}' was not found.");
                     }
 
                     var remaining = poLine.QuantityOrdered - poLine.QuantityReceived;
                     if (requestLine.QuantityReceivedNow > remaining)
                     {
-                        return ServiceResponse<PurchaseOrderDto>.BadRequest(
+                        return ServiceResponse<PurchaseOrderDTO>.BadRequest(
                             $"Cannot receive {requestLine.QuantityReceivedNow} units for line '{poLine.PurchaseOrderLineId}'. Remaining quantity is {remaining}.");
                     }
                 }
@@ -141,8 +141,8 @@ public class GoodsReceiptService(
                     po.Status,
                     movements.Count);
 
-                return ServiceResponse<PurchaseOrderDto>.Success(
-                    mapper.Map<PurchaseOrderDto>(po),
+                return ServiceResponse<PurchaseOrderDTO>.Success(
+                    mapper.Map<PurchaseOrderDTO>(po),
                     "Goods receipt applied successfully.");
             }, token),
             cancellationToken);

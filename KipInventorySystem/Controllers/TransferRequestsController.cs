@@ -33,6 +33,7 @@ public class TransferRequestsController(ITransferRequestService transferRequestS
 
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> CreateDraft(
         [FromBody] CreateTransferRequestDraftRequest request,
         CancellationToken cancellationToken)
@@ -50,6 +51,7 @@ public class TransferRequestsController(ITransferRequestService transferRequestS
 
     [HttpPost("{transferRequestId:guid}/submit")]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Submit(Guid transferRequestId, CancellationToken cancellationToken)
     {
         if (!TryGetIdempotencyKey(out var key, out var error))
@@ -62,6 +64,7 @@ public class TransferRequestsController(ITransferRequestService transferRequestS
 
     [HttpPost("{transferRequestId:guid}/dispatch")]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Dispatch(Guid transferRequestId, CancellationToken cancellationToken)
     {
         if (!TryGetIdempotencyKey(out var key, out var error))
@@ -74,6 +77,7 @@ public class TransferRequestsController(ITransferRequestService transferRequestS
 
     [HttpPost("{transferRequestId:guid}/complete")]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Complete(Guid transferRequestId, CancellationToken cancellationToken)
     {
         if (!TryGetIdempotencyKey(out var key, out var error))
@@ -86,6 +90,7 @@ public class TransferRequestsController(ITransferRequestService transferRequestS
 
     [HttpPost("{transferRequestId:guid}/cancel")]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Cancel(Guid transferRequestId, CancellationToken cancellationToken)
     {
         if (!TryGetIdempotencyKey(out var key, out var error))

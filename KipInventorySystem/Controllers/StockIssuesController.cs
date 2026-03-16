@@ -13,6 +13,7 @@ public class StockIssuesController(IStockIssueService stockIssueService) : BaseC
 {
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN)]
+    [RequiresIdempotencyKey]
     public async Task<IActionResult> Create([FromBody] CreateStockIssueRequest request, CancellationToken cancellationToken)
     {
         var validation = ValidateModelState();
