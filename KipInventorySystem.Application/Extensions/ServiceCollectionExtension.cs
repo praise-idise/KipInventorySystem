@@ -3,6 +3,7 @@ using KipInventorySystem.Application.Services.Email;
 using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Application.Services.Inventory.GoodsReceipts;
 using KipInventorySystem.Application.Services.Inventory.Products;
+using KipInventorySystem.Application.Services.Inventory.ProductSuppliers;
 using KipInventorySystem.Application.Services.Inventory.PurchaseOrders;
 using KipInventorySystem.Application.Services.Inventory.StockAdjustments;
 using KipInventorySystem.Application.Services.Inventory.StockIssues;
@@ -34,6 +35,7 @@ public static class ServiceCollectionExtension
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IEmailBackgroundJobs, EmailBackgroundJobs>();
         services.AddScoped<IProductService, ProductService>();
+        services.AddScoped<IProductSupplierService, ProductSupplierService>();
         services.AddScoped<IWarehouseService, WarehouseService>();
         services.AddScoped<IInventorySupplierService, InventorySupplierService>();
         services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();

@@ -104,39 +104,38 @@ public class PurchaseOrderService(
                 return ServiceResponse<PurchaseOrderDTO>.Conflict("Only draft purchase orders can be updated.");
             }
 
+            var effectiveSupplierId = request.SupplierId ?? po.SupplierId;
+            var effectiveWarehouseId = request.WarehouseId ?? po.WarehouseId;
+
             if (request.Lines is not null && HasDuplicateProducts(request.Lines.Select(x => x.ProductId)))
             {
                 return ServiceResponse<PurchaseOrderDTO>.BadRequest("Duplicate products are not allowed in a purchase order.");
             }
 
-            if (request.SupplierId.HasValue)
+            if (request.SupplierId.HasValue || request.WarehouseId.HasValue || request.Lines is not null)
             {
-                var supplier = await unitOfWork.Repository<Supplier>().GetByIdAsync(request.SupplierId.Value, token);
-                if (supplier is null)
-                {
-                    return ServiceResponse<PurchaseOrderDTO>.BadRequest("Supplier was not found.");
-                }
-            }
+                List<Guid> productIds;
 
-            if (request.WarehouseId.HasValue)
-            {
-                var warehouse = await unitOfWork.Repository<Warehouse>().GetByIdAsync(request.WarehouseId.Value, token);
-                if (warehouse is null)
+                if (request.Lines is not null)
                 {
-                    return ServiceResponse<PurchaseOrderDTO>.BadRequest("Warehouse was not found.");
+                    productIds = [.. request.Lines.Select(x => x.ProductId).Distinct()];
                 }
-            }
-
-            if (request.Lines is not null)
-            {
-                var productRepo = unitOfWork.Repository<Product>();
-                foreach (var productId in request.Lines.Select(x => x.ProductId).Distinct())
+                else
                 {
-                    var product = await productRepo.GetByIdAsync(productId, token);
-                    if (product is null)
-                    {
-                        return ServiceResponse<PurchaseOrderDTO>.BadRequest($"Product '{productId}' was not found.");
-                    }
+                    productIds = [.. (await lineRepo.WhereAsync(x => x.PurchaseOrderId == purchaseOrderId, token))
+                        .Select(x => x.ProductId)
+                        .Distinct()];
+                }
+
+                var validation = await ValidateReferencesAsync(
+                    effectiveSupplierId,
+                    effectiveWarehouseId,
+                    productIds,
+                    token);
+
+                if (validation is not null)
+                {
+                    return validation;
                 }
             }
 
@@ -385,12 +384,23 @@ public class PurchaseOrderService(
         }
 
         var productRepo = unitOfWork.Repository<Product>();
+        var productSupplierRepo = unitOfWork.Repository<ProductSupplier>();
         foreach (var productId in productIds.Distinct())
         {
             var product = await productRepo.GetByIdAsync(productId, cancellationToken);
             if (product is null)
             {
                 return ServiceResponse<PurchaseOrderDTO>.BadRequest($"Product '{productId}' was not found.");
+            }
+
+            var productSupplier = await productSupplierRepo.FindAsync(
+                x => x.ProductId == productId && x.SupplierId == supplierId,
+                cancellationToken);
+
+            if (productSupplier is null)
+            {
+                return ServiceResponse<PurchaseOrderDTO>.BadRequest(
+                    $"Product '{productId}' is not linked to the selected supplier.");
             }
         }
 

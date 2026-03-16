@@ -2,6 +2,8 @@ using Asp.Versioning;
 using KipInventorySystem.API.Attributes;
 using KipInventorySystem.Application.Services.Inventory.Products;
 using KipInventorySystem.Application.Services.Inventory.Products.DTOs;
+using KipInventorySystem.Application.Services.Inventory.ProductSuppliers;
+using KipInventorySystem.Application.Services.Inventory.ProductSuppliers.DTOs;
 using KipInventorySystem.Shared.Enums;
 using KipInventorySystem.Shared.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -11,7 +13,9 @@ namespace KipInventorySystem.API.Controllers;
 
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
-public class ProductsController(IProductService productService) : BaseController
+public class ProductsController(
+    IProductService productService,
+    IProductSupplierService productSupplierService) : BaseController
 {
     [HttpGet]
     [Authorize]
@@ -61,6 +65,41 @@ public class ProductsController(IProductService productService) : BaseController
         var response = await productService.UpdateAsync(productId, request, cancellationToken);
         return ComputeResponse(response);
     }
+
+    [HttpPost("{productId:guid}/suppliers")]
+    [Roles(ROLE_TYPE.ADMIN)]
+    public async Task<IActionResult> CreateSupplierLink(
+        Guid productId,
+        [FromBody] CreateProductSupplierRequest request,
+        CancellationToken cancellationToken)
+    {
+        var validation = ValidateModelState();
+        if (validation != null) return validation;
+
+        return ComputeResponse(await productSupplierService.CreateAsync(productId, request, cancellationToken));
+    }
+
+    [HttpPatch("{productId:guid}/suppliers/{supplierId:guid}")]
+    [Roles(ROLE_TYPE.ADMIN)]
+    public async Task<IActionResult> UpdateSupplierLink(
+        Guid productId,
+        Guid supplierId,
+        [FromBody] UpdateProductSupplierRequest request,
+        CancellationToken cancellationToken)
+    {
+        var validation = ValidateModelState();
+        if (validation != null) return validation;
+
+        return ComputeResponse(await productSupplierService.UpdateAsync(productId, supplierId, request, cancellationToken));
+    }
+
+    [HttpDelete("{productId:guid}/suppliers/{supplierId:guid}")]
+    [Roles(ROLE_TYPE.ADMIN)]
+    public async Task<IActionResult> DeleteSupplierLink(
+        Guid productId,
+        Guid supplierId,
+        CancellationToken cancellationToken)
+        => ComputeResponse(await productSupplierService.DeleteAsync(productId, supplierId, cancellationToken));
 
     [HttpDelete("{productId:guid}")]
     [Roles(ROLE_TYPE.ADMIN)]

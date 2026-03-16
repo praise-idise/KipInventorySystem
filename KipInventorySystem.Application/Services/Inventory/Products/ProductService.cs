@@ -48,14 +48,6 @@ public partial class ProductService(
             token => transactionRunner.ExecuteSerializableAsync("product.create", async _ =>
             {
                 var productRepo = unitOfWork.Repository<Product>();
-                var supplierRepo = unitOfWork.Repository<Supplier>();
-
-                var supplier = await supplierRepo.GetByIdAsync(request.DefaultSupplierId, token);
-                if (supplier is null)
-                {
-                    return ServiceResponse<ProductDTO>.BadRequest("Default supplier was not found.");
-                }
-
                 var product = mapper.Map<Product>(request);
                 NormalizeScalarFields(product);
                 product.VariantAttributes = [.. NormalizeVariantAttributes(product.VariantAttributes)];
@@ -92,10 +84,11 @@ public partial class ProductService(
         CancellationToken cancellationToken = default)
     {
         var productRepo = unitOfWork.Repository<Product>();
-        var supplierRepo = unitOfWork.Repository<Supplier>();
         var product = await productRepo.GetByIdAsync(
             productId,
-            query => query.Include(x => x.VariantAttributes),
+            query => query
+                .Include(x => x.VariantAttributes)
+                .Include(x => x.ProductSuppliers),
             cancellationToken);
         if (product is null)
         {
@@ -156,17 +149,6 @@ public partial class ProductService(
             product.ReorderQuantity = request.ReorderQuantity.Value;
         }
 
-        if (request.DefaultSupplierId.HasValue)
-        {
-            var supplier = await supplierRepo.GetByIdAsync(request.DefaultSupplierId.Value, cancellationToken);
-            if (supplier is null)
-            {
-                return ServiceResponse<ProductDTO>.BadRequest("Default supplier was not found.");
-            }
-
-            product.DefaultSupplierId = request.DefaultSupplierId.Value;
-        }
-
         if (request.IsActive.HasValue)
         {
             product.IsActive = request.IsActive.Value;
@@ -224,7 +206,9 @@ public partial class ProductService(
     {
         var product = await unitOfWork.Repository<Product>().GetByIdAsync(
             productId,
-            query => query.Include(x => x.VariantAttributes),
+            query => query
+                .Include(x => x.VariantAttributes)
+                .Include(x => x.ProductSuppliers),
             cancellationToken);
         if (product is null)
         {
@@ -242,7 +226,9 @@ public partial class ProductService(
             parameters,
             query => query.OrderByDescending(x => x.CreatedAt),
             cancellationToken: cancellationToken,
-            include: query => query.Include(x => x.VariantAttributes));
+            include: query => query
+                .Include(x => x.VariantAttributes)
+                .Include(x => x.ProductSuppliers));
 
         var response = new PaginationResult<ProductDTO>
         {
@@ -279,7 +265,9 @@ public partial class ProductService(
                      attribute.AttributeName.ToLower().Contains(term) ||
                      attribute.AttributeCode.ToLower().Contains(term)),
             cancellationToken,
-            query => query.Include(x => x.VariantAttributes));
+            query => query
+                .Include(x => x.VariantAttributes)
+                .Include(x => x.ProductSuppliers));
 
         var response = new PaginationResult<ProductDTO>
         {

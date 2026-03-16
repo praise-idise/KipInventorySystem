@@ -22,7 +22,6 @@ public class CreateProductValidator : AbstractValidator<CreateProductDTO>
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.Description).MaximumLength(1000);
         RuleFor(x => x.UnitOfMeasure).NotEmpty().MaximumLength(20);
-        RuleFor(x => x.DefaultSupplierId).NotEmpty();
         RuleFor(x => x.ReorderThreshold).GreaterThanOrEqualTo(0);
         RuleFor(x => x.ReorderQuantity).GreaterThan(0);
     }
@@ -52,7 +51,6 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDTO>
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200).When(x => x.Name is not null);
         RuleFor(x => x.Description).MaximumLength(1000).When(x => x.Description is not null);
         RuleFor(x => x.UnitOfMeasure).NotEmpty().MaximumLength(20).When(x => x.UnitOfMeasure is not null);
-        RuleFor(x => x.DefaultSupplierId).NotEmpty().When(x => x.DefaultSupplierId.HasValue);
         RuleFor(x => x.ReorderThreshold).GreaterThanOrEqualTo(0).When(x => x.ReorderThreshold.HasValue);
         RuleFor(x => x.ReorderQuantity).GreaterThan(0).When(x => x.ReorderQuantity.HasValue);
     }
@@ -67,7 +65,6 @@ public class UpdateProductValidator : AbstractValidator<UpdateProductDTO>
                request.UnitOfMeasure is not null ||
                request.ReorderThreshold.HasValue ||
                request.ReorderQuantity.HasValue ||
-               request.DefaultSupplierId.HasValue ||
                request.IsActive.HasValue;
     }
 }

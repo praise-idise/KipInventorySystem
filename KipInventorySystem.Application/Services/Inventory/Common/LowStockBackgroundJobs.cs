@@ -29,6 +29,8 @@ public class LowStockBackgroundJobs(
         var threshold = inventory.ReorderThresholdOverride ?? product.ReorderThreshold;
         if (inventory.AvailableQuantity <= threshold)
         {
+            // TODO: When reorder flow is introduced, group low-stock products by ProductSupplier.IsDefault
+            // and flag products that do not have a default supplier link for manual procurement review.
             logger.LogWarning(
                 "Low stock detected. WarehouseId={WarehouseId}, ProductId={ProductId}, Available={Available}, Threshold={Threshold}",
                 warehouseId,

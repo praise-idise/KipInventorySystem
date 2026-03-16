@@ -13,6 +13,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<WarehouseCodeCounter> WarehouseCodeCounters => Set<WarehouseCodeCounter>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductVariantAttribute> ProductVariantAttributes => Set<ProductVariantAttribute>();
+    public DbSet<ProductSupplier> ProductSuppliers => Set<ProductSupplier>();
     public DbSet<WarehouseInventory> WarehouseInventories => Set<WarehouseInventory>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderLine> PurchaseOrderLines => Set<PurchaseOrderLine>();
@@ -92,6 +93,29 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         modelBuilder.Entity<ProductVariantAttribute>()
             .HasIndex(e => new { e.ProductId, e.AttributeName })
+            .IsUnique();
+
+        modelBuilder.Entity<ProductSupplier>()
+            .HasKey(e => new { e.ProductId, e.SupplierId });
+
+        modelBuilder.Entity<ProductSupplier>()
+            .HasOne(e => e.Product)
+            .WithMany(e => e.ProductSuppliers)
+            .HasForeignKey(e => e.ProductId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ProductSupplier>()
+            .HasOne(e => e.Supplier)
+            .WithMany(e => e.ProductSuppliers)
+            .HasForeignKey(e => e.SupplierId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ProductSupplier>()
+            .HasQueryFilter(e => !e.Product.IsDeleted && !e.Supplier.IsDeleted);
+
+        modelBuilder.Entity<ProductSupplier>()
+            .HasIndex(e => e.ProductId)
+            .HasFilter("\"IsDefault\" = true")
             .IsUnique();
 
         modelBuilder.Entity<PurchaseOrder>()

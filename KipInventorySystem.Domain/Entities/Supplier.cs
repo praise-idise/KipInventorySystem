@@ -21,6 +21,6 @@ public class Supplier : BaseEntity
 
     public int LeadTimeDays { get; set; } = 7;
 
-    public ICollection<Product> Products { get; set; } = [];
+    public ICollection<ProductSupplier> ProductSuppliers { get; set; } = [];
     public ICollection<PurchaseOrder> PurchaseOrders { get; set; } = [];
 }

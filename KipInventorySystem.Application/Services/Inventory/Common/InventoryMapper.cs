@@ -1,3 +1,4 @@
+using KipInventorySystem.Application.Services.Inventory.ProductSuppliers.DTOs;
 using KipInventorySystem.Application.Services.Inventory.Products.DTOs;
 using KipInventorySystem.Application.Services.Inventory.PurchaseOrders.DTOs;
 using KipInventorySystem.Application.Services.Inventory.StockAdjustments.DTOs;
@@ -16,8 +17,10 @@ public class InventoryMapper : IRegister
         config.NewConfig<Supplier, SupplierDto>();
         config.NewConfig<Warehouse, WarehouseDto>();
         config.NewConfig<ProductVariantAttribute, ProductVariantAttributeDTO>();
+        config.NewConfig<ProductSupplier, ProductSupplierDTO>();
         config.NewConfig<Product, ProductDTO>()
-            .Map(dest => dest.VariantAttributes, src => src.VariantAttributes.OrderBy(x => x.SortOrder));
+            .Map(dest => dest.VariantAttributes, src => src.VariantAttributes.OrderBy(x => x.SortOrder))
+            .Map(dest => dest.Suppliers, src => src.ProductSuppliers.OrderByDescending(x => x.IsDefault).ThenBy(x => x.SupplierId));
 
         config.NewConfig<PurchaseOrderLine, PurchaseOrderLineDTO>();
         config.NewConfig<PurchaseOrder, PurchaseOrderDTO>();

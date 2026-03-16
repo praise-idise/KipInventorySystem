@@ -1,3 +1,4 @@
+using KipInventorySystem.Application.Services.Inventory.ProductSuppliers.DTOs;
 using System.ComponentModel;
 
 namespace KipInventorySystem.Application.Services.Inventory.Products.DTOs;
@@ -45,9 +46,6 @@ public class CreateProductDTO
 
     [DefaultValue(100)]
     public int ReorderQuantity { get; set; } = 40;
-
-    [DefaultValue("3fa85f64-5717-4562-b3fc-2c963f66afa6")]
-    public Guid DefaultSupplierId { get; set; }
 }
 
 public class UpdateProductDTO
@@ -74,10 +72,6 @@ public class UpdateProductDTO
 
     [DefaultValue(100)]
     public int? ReorderQuantity { get; set; }
-
-    [DefaultValue("3fa85f64-5717-4562-b3fc-2c963f66afa6")]
-    public Guid? DefaultSupplierId { get; set; }
-
     [DefaultValue(true)]
     public bool? IsActive { get; set; }
 }
@@ -93,9 +87,9 @@ public class ProductDTO
     public string? Description { get; set; }
     public string UnitOfMeasure { get; set; } = string.Empty;
     public List<ProductVariantAttributeDTO> VariantAttributes { get; set; } = [];
+    public List<ProductSupplierDTO> Suppliers { get; set; } = [];
     public int ReorderThreshold { get; set; }
     public int ReorderQuantity { get; set; }
-    public Guid? DefaultSupplierId { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
