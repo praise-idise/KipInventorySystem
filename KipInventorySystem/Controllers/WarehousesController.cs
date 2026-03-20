@@ -31,6 +31,11 @@ public class WarehousesController(IWarehouseService warehouseService) : BaseCont
     public async Task<IActionResult> GetById(Guid warehouseId, CancellationToken cancellationToken)
         => ComputeResponse(await warehouseService.GetByIdAsync(warehouseId, cancellationToken));
 
+    [HttpGet("{warehouseId:guid}/inventory")]
+    [Authorize]
+    public async Task<IActionResult> GetInventory(Guid warehouseId, CancellationToken cancellationToken)
+        => ComputeResponse(await warehouseService.GetInventoryAsync(warehouseId, cancellationToken));
+
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN)]
     public async Task<IActionResult> Create([FromBody] CreateWarehouseRequest request, CancellationToken cancellationToken)

@@ -10,6 +10,9 @@ public class ReceiveGoodsRequestValidator : AbstractValidator<ReceiveGoodsReques
         RuleFor(x => x.PurchaseOrderId).NotEmpty();
         RuleFor(x => x.Notes).MaximumLength(1000);
         RuleFor(x => x.Lines).NotEmpty();
+        RuleFor(x => x.Lines)
+            .Must(lines => lines.Select(line => line.PurchaseOrderLineId).Distinct().Count() == lines.Count)
+            .WithMessage("Duplicate purchase order lines are not allowed in a goods receipt.");
         RuleForEach(x => x.Lines).SetValidator(new ReceiveGoodsLineRequestValidator());
     }
 }

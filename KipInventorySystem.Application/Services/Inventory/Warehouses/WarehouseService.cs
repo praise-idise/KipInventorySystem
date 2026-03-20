@@ -181,6 +181,31 @@ public class WarehouseService(
         return ServiceResponse<WarehouseDto>.Success(mapper.Map<WarehouseDto>(warehouse));
     }
 
+    public async Task<ServiceResponse<List<WarehouseInventoryItemDto>>> GetInventoryAsync(
+        Guid warehouseId,
+        CancellationToken cancellationToken = default)
+    {
+        var warehouse = await unitOfWork.Repository<Warehouse>().GetByIdAsync(
+            warehouseId,
+            query => query
+                .Include(x => x.InventoryItems)
+                .ThenInclude(x => x.Product),
+            cancellationToken);
+
+        if (warehouse is null)
+        {
+            return ServiceResponse<List<WarehouseInventoryItemDto>>.NotFound("Warehouse was not found.");
+        }
+
+        var items = warehouse.InventoryItems
+            .OrderBy(x => x.Product.Name)
+            .ThenBy(x => x.Product.Sku)
+            .Select(x => mapper.Map<WarehouseInventoryItemDto>(x))
+            .ToList();
+
+        return ServiceResponse<List<WarehouseInventoryItemDto>>.Success(items);
+    }
+
     public async Task<ServiceResponse<PaginationResult<WarehouseDto>>> GetAllAsync(
         RequestParameters parameters,
         CancellationToken cancellationToken = default)

@@ -50,3 +50,15 @@ public class WarehouseDto
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
+
+public class WarehouseInventoryItemDto
+{
+    public Guid ProductId { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public string Sku { get; set; } = string.Empty;
+    public string UnitOfMeasure { get; set; } = string.Empty;
+    public int QuantityOnHand { get; set; }
+    public int ReservedQuantity { get; set; }
+    public int AvailableQuantity { get; set; }
+    public int? ReorderThresholdOverride { get; set; }
+}

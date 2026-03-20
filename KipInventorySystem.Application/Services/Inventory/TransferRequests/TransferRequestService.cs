@@ -347,6 +347,7 @@ public class TransferRequestService(
                     var inventory = await inventoryRepo.FindAsync(
                         x => x.WarehouseId == transfer.DestinationWarehouseId && x.ProductId == line.ProductId,
                         token);
+                    var qty = line.QuantityTransferred > 0 ? line.QuantityTransferred : line.QuantityRequested;
 
                     if (inventory is null)
                     {
@@ -354,18 +355,19 @@ public class TransferRequestService(
                         {
                             WarehouseId = transfer.DestinationWarehouseId,
                             ProductId = line.ProductId,
-                            QuantityOnHand = 0,
+                            QuantityOnHand = qty,
                             ReservedQuantity = 0,
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow
                         };
                         await inventoryRepo.AddAsync(inventory, token);
                     }
-
-                    var qty = line.QuantityTransferred > 0 ? line.QuantityTransferred : line.QuantityRequested;
-                    inventory.QuantityOnHand += qty;
-                    inventory.UpdatedAt = DateTime.UtcNow;
-                    inventoryRepo.Update(inventory);
+                    else
+                    {
+                        inventory.QuantityOnHand += qty;
+                        inventory.UpdatedAt = DateTime.UtcNow;
+                        inventoryRepo.Update(inventory);
+                    }
                     affectedProducts.Add(line.ProductId);
 
                     movements.Add(new StockMovement

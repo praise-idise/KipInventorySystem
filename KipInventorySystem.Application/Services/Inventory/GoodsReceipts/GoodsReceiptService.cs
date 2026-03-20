@@ -24,7 +24,7 @@ public class GoodsReceiptService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<ReceiveGoodsRequest, PurchaseOrderDTO>(
+        return idempotencyService.ExecuteAsync(
             "goods-receipt-receive",
             idempotencyKey,
             request,
@@ -34,7 +34,7 @@ public class GoodsReceiptService(
                 var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
                 var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
                 var movementRepo = unitOfWork.Repository<StockMovement>();
-
+                
                 var po = await poRepo.GetByIdAsync(request.PurchaseOrderId, token);
                 if (po is null)
                 {
@@ -48,6 +48,7 @@ public class GoodsReceiptService(
                 }
 
                 var poLines = await lineRepo.WhereAsync(x => x.PurchaseOrderId == request.PurchaseOrderId, token);
+                
                 if (poLines.Count == 0)
                 {
                     return ServiceResponse<PurchaseOrderDTO>.BadRequest("Purchase order has no lines.");
@@ -56,6 +57,7 @@ public class GoodsReceiptService(
                 var requestLinesById = request.Lines.ToDictionary(x => x.PurchaseOrderLineId, x => x);
                 var movements = new List<StockMovement>();
 
+                // Validate the requested receipt quantities before making any stock changes.
                 foreach (var requestLine in request.Lines)
                 {
                     var poLine = poLines.FirstOrDefault(x => x.PurchaseOrderLineId == requestLine.PurchaseOrderLineId);
@@ -73,6 +75,7 @@ public class GoodsReceiptService(
                     }
                 }
 
+                // Apply each requested receipt line to both the PO and warehouse stock.
                 foreach (var poLine in poLines)
                 {
                     if (!requestLinesById.TryGetValue(poLine.PurchaseOrderLineId, out var requestLine))
@@ -94,18 +97,21 @@ public class GoodsReceiptService(
                         {
                             WarehouseId = po.WarehouseId,
                             ProductId = poLine.ProductId,
-                            QuantityOnHand = 0,
+                            QuantityOnHand = requestLine.QuantityReceivedNow,
                             ReservedQuantity = 0,
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow
                         };
                         await inventoryRepo.AddAsync(inventory, token);
                     }
+                    else
+                    {
+                        inventory.QuantityOnHand += requestLine.QuantityReceivedNow;
+                        inventory.UpdatedAt = DateTime.UtcNow;
+                        inventoryRepo.Update(inventory);
+                    }
 
-                    inventory.QuantityOnHand += requestLine.QuantityReceivedNow;
-                    inventory.UpdatedAt = DateTime.UtcNow;
-                    inventoryRepo.Update(inventory);
-
+                    // Record each physical receipt as a stock movement for audit/history.
                     movements.Add(new StockMovement
                     {
                         ProductId = poLine.ProductId,
@@ -126,6 +132,7 @@ public class GoodsReceiptService(
                     await movementRepo.AddRangeAsync(movements, token);
                 }
 
+                // The PO is complete only when every line has been fully received.
                 po.Status = poLines.All(x => x.QuantityReceived >= x.QuantityOrdered)
                     ? PurchaseOrderStatus.Received
                     : PurchaseOrderStatus.PartiallyReceived;

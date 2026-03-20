@@ -203,7 +203,7 @@ public class StockAdjustmentService(
                         {
                             WarehouseId = adjustment.WarehouseId,
                             ProductId = line.ProductId,
-                            QuantityOnHand = 0,
+                            QuantityOnHand = line.QuantityAfter,
                             ReservedQuantity = 0,
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow
@@ -212,9 +212,12 @@ public class StockAdjustmentService(
                     }
 
                     var delta = line.QuantityAfter - line.QuantityBefore;
-                    inventory.QuantityOnHand = line.QuantityAfter;
-                    inventory.UpdatedAt = DateTime.UtcNow;
-                    inventoryRepo.Update(inventory);
+                    if (inventory.QuantityOnHand != line.QuantityAfter)
+                    {
+                        inventory.QuantityOnHand = line.QuantityAfter;
+                        inventory.UpdatedAt = DateTime.UtcNow;
+                        inventoryRepo.Update(inventory);
+                    }
                     affectedProducts.Add(line.ProductId);
 
                     if (delta != 0)

@@ -17,6 +17,9 @@ public interface IWarehouseService
 
     Task<ServiceResponse> SoftDeleteAsync(Guid warehouseId, CancellationToken cancellationToken = default);
     Task<ServiceResponse<WarehouseDto>> GetByIdAsync(Guid warehouseId, CancellationToken cancellationToken = default);
+    Task<ServiceResponse<List<WarehouseInventoryItemDto>>> GetInventoryAsync(
+        Guid warehouseId,
+        CancellationToken cancellationToken = default);
     Task<ServiceResponse<PaginationResult<WarehouseDto>>> GetAllAsync(
         RequestParameters parameters,
         CancellationToken cancellationToken = default);

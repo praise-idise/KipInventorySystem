@@ -16,6 +16,10 @@ public class InventoryMapper : IRegister
     {
         config.NewConfig<Supplier, SupplierDto>();
         config.NewConfig<Warehouse, WarehouseDto>();
+        config.NewConfig<WarehouseInventory, WarehouseInventoryItemDto>()
+            .Map(dest => dest.ProductName, src => src.Product.Name)
+            .Map(dest => dest.Sku, src => src.Product.Sku)
+            .Map(dest => dest.UnitOfMeasure, src => src.Product.UnitOfMeasure);
         config.NewConfig<ProductVariantAttribute, ProductVariantAttributeDTO>();
         config.NewConfig<ProductSupplier, ProductSupplierDTO>()
             .Map(dest => dest.SupplierName, src => src.Supplier.Name)
