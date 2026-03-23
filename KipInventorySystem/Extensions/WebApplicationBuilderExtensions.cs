@@ -141,6 +141,8 @@ public static class WebApplicationBuilderExtensions
                     new List<string>()
                 }
             });
+
+            options.UseInlineDefinitionsForEnums();
         });
 
         builder.Services.AddRateLimiter(options =>

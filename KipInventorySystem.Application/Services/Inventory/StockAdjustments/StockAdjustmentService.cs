@@ -146,6 +146,10 @@ public class StockAdjustmentService(
             stockAdjustmentId,
             token => transactionRunner.ExecuteSerializableAsync("stockAdjustment.apply", async _ =>
             {
+                var currentUser = userContext.GetCurrentUser();
+                var movementCreatorId = currentUser.UserId;
+                var movementCreator = currentUser.FullName;
+
                 var adjustmentRepo = unitOfWork.Repository<StockAdjustment>();
                 var lineRepo = unitOfWork.Repository<StockAdjustmentLine>();
                 var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
@@ -231,6 +235,8 @@ public class StockAdjustmentService(
                             OccurredAt = DateTime.UtcNow,
                             ReferenceType = StockMovementReferenceType.StockAdjustment,
                             ReferenceId = adjustment.StockAdjustmentId,
+                            Creator = movementCreator,
+                            CreatorId = movementCreatorId,
                             Notes = adjustment.Notes,
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow

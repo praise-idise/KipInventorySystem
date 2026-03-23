@@ -172,19 +172,6 @@ public class WarehouseService(
 
     public async Task<ServiceResponse<WarehouseDto>> GetByIdAsync(Guid warehouseId, CancellationToken cancellationToken = default)
     {
-        var warehouse = await unitOfWork.Repository<Warehouse>().GetByIdAsync(warehouseId, cancellationToken);
-        if (warehouse is null)
-        {
-            return ServiceResponse<WarehouseDto>.NotFound("Warehouse was not found.");
-        }
-
-        return ServiceResponse<WarehouseDto>.Success(mapper.Map<WarehouseDto>(warehouse));
-    }
-
-    public async Task<ServiceResponse<List<WarehouseInventoryItemDto>>> GetInventoryAsync(
-        Guid warehouseId,
-        CancellationToken cancellationToken = default)
-    {
         var warehouse = await unitOfWork.Repository<Warehouse>().GetByIdAsync(
             warehouseId,
             query => query
@@ -194,16 +181,19 @@ public class WarehouseService(
 
         if (warehouse is null)
         {
-            return ServiceResponse<List<WarehouseInventoryItemDto>>.NotFound("Warehouse was not found.");
+            return ServiceResponse<WarehouseDto>.NotFound("Warehouse was not found.");
         }
 
-        var items = warehouse.InventoryItems
-            .OrderBy(x => x.Product.Name)
-            .ThenBy(x => x.Product.Sku)
-            .Select(x => mapper.Map<WarehouseInventoryItemDto>(x))
-            .ToList();
+        var warehouseDto = mapper.Map<WarehouseDto>(warehouse);
+        warehouseDto.InventoryItems =
+        [
+            .. warehouse.InventoryItems
+                .OrderBy(x => x.Product.Name)
+                .ThenBy(x => x.Product.Sku)
+                .Select(x => mapper.Map<WarehouseInventoryItemDto>(x))
+        ];
 
-        return ServiceResponse<List<WarehouseInventoryItemDto>>.Success(items);
+        return ServiceResponse<WarehouseDto>.Success(warehouseDto);
     }
 
     public async Task<ServiceResponse<PaginationResult<WarehouseDto>>> GetAllAsync(

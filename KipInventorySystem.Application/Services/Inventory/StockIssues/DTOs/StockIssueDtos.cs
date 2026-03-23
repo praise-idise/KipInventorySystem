@@ -8,12 +8,6 @@ public class CreateStockIssueRequest
     [DefaultValue("d2719a22-6ee4-47f9-8cd0-68d26a596f6f")]
     public Guid WarehouseId { get; set; }
 
-    [DefaultValue(StockMovementReferenceType.SalesOrder)]
-    public StockMovementReferenceType? ReferenceType { get; set; }
-
-    [DefaultValue("2f7d3b54-388f-4eba-b0f2-caa94ee5f0dd")]
-    public Guid? ReferenceId { get; set; }
-
     [DefaultValue("Issued for same-day shipment.")]
     public string? Notes { get; set; }
 

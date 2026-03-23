@@ -1,6 +1,5 @@
 using FluentValidation;
 using KipInventorySystem.Application.Services.Inventory.StockIssues.DTOs;
-using KipInventorySystem.Domain.Enums;
 
 namespace KipInventorySystem.Application.Services.Inventory.StockIssues.Validators;
 
@@ -11,16 +10,10 @@ public class CreateStockIssueRequestValidator : AbstractValidator<CreateStockIss
         RuleFor(x => x.WarehouseId).NotEmpty();
         RuleFor(x => x.Notes).MaximumLength(500);
         RuleFor(x => x.Lines).NotEmpty();
+        RuleFor(x => x.Lines)
+            .Must(lines => lines.Select(line => line.ProductId).Distinct().Count() == lines.Count)
+            .WithMessage("Duplicate products are not allowed in a stock issue request.");
         RuleForEach(x => x.Lines).SetValidator(new StockIssueLineRequestValidator());
-
-        RuleFor(x => x.ReferenceType)
-            .Must(x => x is null || x == StockMovementReferenceType.SalesOrder)
-            .WithMessage("Only SalesOrder is currently supported as stock issue reference type.");
-
-        RuleFor(x => x.ReferenceId)
-            .NotEmpty()
-            .When(x => x.ReferenceType == StockMovementReferenceType.SalesOrder)
-            .WithMessage("ReferenceId is required when reference type is SalesOrder.");
     }
 }
 

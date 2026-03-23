@@ -15,7 +15,8 @@ public class InventoryMapper : IRegister
     public void Register(TypeAdapterConfig config)
     {
         config.NewConfig<Supplier, SupplierDto>();
-        config.NewConfig<Warehouse, WarehouseDto>();
+        config.NewConfig<Warehouse, WarehouseDto>()
+            .Ignore(dest => dest.InventoryItems);
         config.NewConfig<WarehouseInventory, WarehouseInventoryItemDto>()
             .Map(dest => dest.ProductName, src => src.Product.Name)
             .Map(dest => dest.Sku, src => src.Product.Sku)

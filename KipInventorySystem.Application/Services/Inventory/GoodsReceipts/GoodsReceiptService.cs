@@ -30,6 +30,10 @@ public class GoodsReceiptService(
             request,
             token => transactionRunner.ExecuteSerializableAsync("goodsReceipt.receive", async _ =>
             {
+                var currentUser = userContext.GetCurrentUser();
+                var movementCreatorId = currentUser.UserId;
+                var movementCreator = currentUser.FullName;
+
                 var poRepo = unitOfWork.Repository<PurchaseOrder>();
                 var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
                 var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
@@ -121,6 +125,8 @@ public class GoodsReceiptService(
                         OccurredAt = DateTime.UtcNow,
                         ReferenceType = StockMovementReferenceType.PurchaseOrder,
                         ReferenceId = po.PurchaseOrderId,
+                        Creator = movementCreator,
+                        CreatorId = movementCreatorId,
                         Notes = request.Notes,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow

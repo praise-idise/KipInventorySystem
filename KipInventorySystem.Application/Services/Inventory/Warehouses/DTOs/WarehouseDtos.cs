@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace KipInventorySystem.Application.Services.Inventory.Warehouses.DTOs;
 
@@ -49,6 +50,8 @@ public class WarehouseDto
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<WarehouseInventoryItemDto>? InventoryItems { get; set; }
 }
 
 public class WarehouseInventoryItemDto

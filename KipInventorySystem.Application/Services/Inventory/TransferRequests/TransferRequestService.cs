@@ -192,6 +192,10 @@ public class TransferRequestService(
             transferRequestId,
             token => transactionRunner.ExecuteSerializableAsync("transferRequest.dispatch", async _ =>
             {
+                var currentUser = userContext.GetCurrentUser();
+                var movementCreatorId = currentUser.UserId;
+                var movementCreator = currentUser.FullName;
+
                 var transferRepo = unitOfWork.Repository<TransferRequest>();
                 var lineRepo = unitOfWork.Repository<TransferRequestLine>();
                 var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
@@ -265,6 +269,8 @@ public class TransferRequestService(
                         OccurredAt = DateTime.UtcNow,
                         ReferenceType = StockMovementReferenceType.TransferRequest,
                         ReferenceId = transfer.TransferRequestId,
+                        Creator = movementCreator,
+                        CreatorId = movementCreatorId,
                         Notes = transfer.Notes,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
@@ -311,6 +317,10 @@ public class TransferRequestService(
             transferRequestId,
             token => transactionRunner.ExecuteSerializableAsync("transferRequest.complete", async _ =>
             {
+                var currentUser = userContext.GetCurrentUser();
+                var movementCreatorId = currentUser.UserId;
+                var movementCreator = currentUser.FullName;
+
                 var transferRepo = unitOfWork.Repository<TransferRequest>();
                 var lineRepo = unitOfWork.Repository<TransferRequestLine>();
                 var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
@@ -379,6 +389,8 @@ public class TransferRequestService(
                         OccurredAt = DateTime.UtcNow,
                         ReferenceType = StockMovementReferenceType.TransferRequest,
                         ReferenceId = transfer.TransferRequestId,
+                        Creator = movementCreator,
+                        CreatorId = movementCreatorId,
                         Notes = transfer.Notes,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow

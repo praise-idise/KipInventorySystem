@@ -24,12 +24,16 @@ public class StockIssueService(
     {
         var affectedProductIds = new HashSet<Guid>();
 
-        var response = await idempotencyService.ExecuteAsync<CreateStockIssueRequest, StockIssueResultDto>(
+        var response = await idempotencyService.ExecuteAsync(
             "stock-issue-create",
             idempotencyKey,
             request,
             token => transactionRunner.ExecuteSerializableAsync("stockIssue.create", async _ =>
             {
+                var currentUser = userContext.GetCurrentUser();
+                var movementCreatorId = currentUser.UserId;
+                var movementCreator = currentUser.FullName;
+
                 var warehouseRepo = unitOfWork.Repository<Warehouse>();
                 var productRepo = unitOfWork.Repository<Product>();
                 var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
@@ -39,11 +43,6 @@ public class StockIssueService(
                 if (warehouse is null)
                 {
                     return ServiceResponse<StockIssueResultDto>.BadRequest("Warehouse was not found.");
-                }
-
-                if (request.Lines.GroupBy(x => x.ProductId).Any(x => x.Count() > 1))
-                {
-                    return ServiceResponse<StockIssueResultDto>.BadRequest("Duplicate products are not allowed in a stock issue request.");
                 }
 
                 foreach (var line in request.Lines)
@@ -88,8 +87,10 @@ public class StockIssueService(
                         MovementType = StockMovementType.Issue,
                         Quantity = line.Quantity,
                         OccurredAt = DateTime.UtcNow,
-                        ReferenceType = request.ReferenceType,
-                        ReferenceId = request.ReferenceId,
+                        ReferenceType = StockMovementReferenceType.SalesOrder,
+                        ReferenceId = null,
+                        Creator = movementCreator,
+                        CreatorId = movementCreatorId,
                         Notes = request.Notes,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
@@ -109,11 +110,11 @@ public class StockIssueService(
                 logger.LogInformation(
                     "Inventory audit: operation={Operation}, actor={Actor}, entity=StockIssue, warehouseId={WarehouseId}, movementCount={MovementCount}, referenceType={ReferenceType}, referenceId={ReferenceId}",
                     "CreateStockIssue",
-                    userContext.GetCurrentUser().UserId,
+                    movementCreatorId,
                     request.WarehouseId,
                     movements.Count,
-                    request.ReferenceType,
-                    request.ReferenceId);
+                    StockMovementReferenceType.SalesOrder,
+                    null);
 
                 return ServiceResponse<StockIssueResultDto>.Success(new StockIssueResultDto
                 {

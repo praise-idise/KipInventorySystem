@@ -26,6 +26,12 @@ public class StockMovement : BaseEntity
 
     public Guid? ReferenceId { get; set; }
 
+    [MaxLength(256)]
+    public string? Creator { get; set; }
+
+    [MaxLength(128)]
+    public string? CreatorId { get; set; }
+
     [MaxLength(500)]
     public string? Notes { get; set; }
 }
