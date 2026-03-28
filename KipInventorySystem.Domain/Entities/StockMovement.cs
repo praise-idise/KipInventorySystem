@@ -19,6 +19,8 @@ public class StockMovement : BaseEntity
 
     public StockMovementType MovementType { get; set; }
     public int Quantity { get; set; }
+    public decimal UnitCost { get; set; }
+    public decimal TotalCost { get; set; }
 
     public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
 

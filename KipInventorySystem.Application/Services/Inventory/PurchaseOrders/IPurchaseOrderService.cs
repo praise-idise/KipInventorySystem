@@ -1,4 +1,5 @@
 using KipInventorySystem.Application.Services.Inventory.PurchaseOrders.DTOs;
+using KipInventorySystem.Application.Services.Inventory.Approvals.DTOs;
 using KipInventorySystem.Shared.Models;
 using KipInventorySystem.Shared.Responses;
 
@@ -18,6 +19,17 @@ public interface IPurchaseOrderService
 
     Task<ServiceResponse<PurchaseOrderDTO>> SubmitAsync(
         Guid purchaseOrderId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+
+    Task<ServiceResponse<PurchaseOrderDTO>> ApproveAsync(
+        Guid purchaseOrderId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+
+    Task<ServiceResponse<PurchaseOrderDTO>> ReturnForChangesAsync(
+        Guid purchaseOrderId,
+        ApprovalDecisionRequest request,
         string idempotencyKey,
         CancellationToken cancellationToken = default);
 

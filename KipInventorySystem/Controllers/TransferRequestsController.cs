@@ -1,5 +1,6 @@
 using Asp.Versioning;
 using KipInventorySystem.API.Attributes;
+using KipInventorySystem.Application.Services.Inventory.Approvals.DTOs;
 using KipInventorySystem.Application.Services.Inventory.TransferRequests;
 using KipInventorySystem.Application.Services.Inventory.TransferRequests.DTOs;
 using KipInventorySystem.Shared.Enums;
@@ -32,7 +33,7 @@ public class TransferRequestsController(ITransferRequestService transferRequestS
         => ComputeResponse(await transferRequestService.GetByIdAsync(transferRequestId, cancellationToken));
 
     [HttpPost]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> CreateDraft(
         [FromBody] CreateTransferRequestDraftRequest request,
@@ -50,7 +51,7 @@ public class TransferRequestsController(ITransferRequestService transferRequestS
     }
 
     [HttpPost("{transferRequestId:guid}/submit")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> Submit(Guid transferRequestId, CancellationToken cancellationToken)
     {
@@ -62,8 +63,40 @@ public class TransferRequestsController(ITransferRequestService transferRequestS
         return ComputeResponse(await transferRequestService.SubmitAsync(transferRequestId, key, cancellationToken));
     }
 
+    [HttpPost("{transferRequestId:guid}/approve")]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.APPROVER)]
+    [RequiresIdempotencyKey]
+    public async Task<IActionResult> Approve(Guid transferRequestId, CancellationToken cancellationToken)
+    {
+        if (!TryGetIdempotencyKey(out var key, out var error))
+        {
+            return error!;
+        }
+
+        return ComputeResponse(await transferRequestService.ApproveAsync(transferRequestId, key, cancellationToken));
+    }
+
+    [HttpPost("{transferRequestId:guid}/return")]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.APPROVER)]
+    [RequiresIdempotencyKey]
+    public async Task<IActionResult> ReturnForChanges(
+        Guid transferRequestId,
+        [FromBody] ApprovalDecisionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var validation = ValidateModelState();
+        if (validation != null) return validation;
+
+        if (!TryGetIdempotencyKey(out var key, out var error))
+        {
+            return error!;
+        }
+
+        return ComputeResponse(await transferRequestService.ReturnForChangesAsync(transferRequestId, request, key, cancellationToken));
+    }
+
     [HttpPost("{transferRequestId:guid}/dispatch")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> Dispatch(Guid transferRequestId, CancellationToken cancellationToken)
     {
@@ -76,7 +109,7 @@ public class TransferRequestsController(ITransferRequestService transferRequestS
     }
 
     [HttpPost("{transferRequestId:guid}/complete")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> Complete(Guid transferRequestId, CancellationToken cancellationToken)
     {
@@ -89,7 +122,7 @@ public class TransferRequestsController(ITransferRequestService transferRequestS
     }
 
     [HttpPost("{transferRequestId:guid}/cancel")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> Cancel(Guid transferRequestId, CancellationToken cancellationToken)
     {

@@ -63,5 +63,7 @@ public class WarehouseInventoryItemDto
     public int QuantityOnHand { get; set; }
     public int ReservedQuantity { get; set; }
     public int AvailableQuantity { get; set; }
+    public decimal AverageUnitCost { get; set; }
+    public decimal InventoryValue { get; set; }
     public int? ReorderThresholdOverride { get; set; }
 }

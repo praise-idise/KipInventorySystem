@@ -45,16 +45,18 @@ public class ProductSupplierService(
             {
                 ProductId = productId,
                 SupplierId = request.SupplierId,
+                UnitCost = request.UnitCost,
                 IsDefault = request.IsDefault
             };
 
             await repo.AddAsync(entity, token);
 
             logger.LogInformation(
-                "Inventory audit: operation={Operation}, entity=ProductSupplier, productId={ProductId}, supplierId={SupplierId}, isDefault={IsDefault}",
+                "Inventory audit: operation={Operation}, entity=ProductSupplier, productId={ProductId}, supplierId={SupplierId}, unitCost={UnitCost}, isDefault={IsDefault}",
                 "CreateProductSupplier",
                 productId,
                 request.SupplierId,
+                request.UnitCost,
                 request.IsDefault);
 
             return ServiceResponse<ProductSupplierDTO>.Created(
@@ -92,14 +94,16 @@ public class ProductSupplierService(
                 await ClearExistingDefaultAsync(productId, repo, token);
             }
 
+            entity.UnitCost = request.UnitCost;
             entity.IsDefault = request.IsDefault;
             repo.Update(entity);
 
             logger.LogInformation(
-                "Inventory audit: operation={Operation}, entity=ProductSupplier, productId={ProductId}, supplierId={SupplierId}, isDefault={IsDefault}",
+                "Inventory audit: operation={Operation}, entity=ProductSupplier, productId={ProductId}, supplierId={SupplierId}, unitCost={UnitCost}, isDefault={IsDefault}",
                 "UpdateProductSupplier",
                 productId,
                 supplierId,
+                request.UnitCost,
                 request.IsDefault);
 
             return ServiceResponse<ProductSupplierDTO>.Success(
@@ -164,6 +168,7 @@ public class ProductSupplierService(
             SupplierId = entity.SupplierId,
             SupplierName = supplier.Name,
             SupplierEmail = supplier.Email,
+            UnitCost = entity.UnitCost,
             IsDefault = entity.IsDefault
         };
     }

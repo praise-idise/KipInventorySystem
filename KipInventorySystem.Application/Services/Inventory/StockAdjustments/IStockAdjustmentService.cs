@@ -1,4 +1,5 @@
 using KipInventorySystem.Application.Services.Inventory.StockAdjustments.DTOs;
+using KipInventorySystem.Application.Services.Inventory.Approvals.DTOs;
 using KipInventorySystem.Shared.Models;
 using KipInventorySystem.Shared.Responses;
 
@@ -23,6 +24,12 @@ public interface IStockAdjustmentService
 
     Task<ServiceResponse<StockAdjustmentDto>> ApplyAsync(
         Guid stockAdjustmentId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+
+    Task<ServiceResponse<StockAdjustmentDto>> ReturnForChangesAsync(
+        Guid stockAdjustmentId,
+        ApprovalDecisionRequest request,
         string idempotencyKey,
         CancellationToken cancellationToken = default);
 

@@ -1,10 +1,13 @@
 using KipInventorySystem.Application.Services.Auth;
 using KipInventorySystem.Application.Services.Email;
 using KipInventorySystem.Application.Services.Inventory.Common;
+using KipInventorySystem.Application.Services.Inventory.Approvals;
+using KipInventorySystem.Application.Services.Inventory.Customers;
 using KipInventorySystem.Application.Services.Inventory.GoodsReceipts;
 using KipInventorySystem.Application.Services.Inventory.Products;
 using KipInventorySystem.Application.Services.Inventory.ProductSuppliers;
 using KipInventorySystem.Application.Services.Inventory.PurchaseOrders;
+using KipInventorySystem.Application.Services.Inventory.SalesOrders;
 using KipInventorySystem.Application.Services.Inventory.StockAdjustments;
 using KipInventorySystem.Application.Services.Inventory.StockIssues;
 using KipInventorySystem.Application.Services.Inventory.Suppliers;
@@ -43,6 +46,9 @@ public static class ServiceCollectionExtension
         services.AddScoped<IStockIssueService, StockIssueService>();
         services.AddScoped<ITransferRequestService, TransferRequestService>();
         services.AddScoped<IStockAdjustmentService, StockAdjustmentService>();
+        services.AddScoped<IApprovalRequestService, ApprovalRequestService>();
+        services.AddScoped<ICustomerService, CustomerService>();
+        services.AddScoped<ISalesOrderService, SalesOrderService>();
         services.AddScoped<IIdempotencyService, IdempotencyService>();
         services.AddSingleton<IDocumentNumberGenerator, DocumentNumberGenerator>();
         services.AddScoped<ILowStockBackgroundJobs, LowStockBackgroundJobs>();

@@ -177,4 +177,61 @@ public static class EmailTemplates
 </body>
 </html>";
     }
+
+    public static string PurchaseOrderApprovedEmail(
+        string supplierName,
+        string purchaseOrderNumber,
+        string warehouseName,
+        DateTime? expectedArrivalDate,
+        string lineSummary,
+        string? notes)
+    {
+        var expectedArrivalText = expectedArrivalDate.HasValue
+            ? expectedArrivalDate.Value.ToString("yyyy-MM-dd")
+            : "Not specified";
+
+        var notesText = string.IsNullOrWhiteSpace(notes)
+            ? "No additional notes were provided."
+            : notes.Trim();
+
+        return $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #0F766E; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .info-box {{ background-color: #ECFEFF; border-left: 4px solid #0F766E; padding: 15px; margin: 20px 0; }}
+        .footer {{ text-align: center; margin-top: 30px; color: #6B7280; font-size: 14px; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>Purchase Order Approved</h1>
+        </div>
+        <div class='content'>
+            <h2>Hello {supplierName},</h2>
+            <p>A purchase order has been approved and is ready for your attention.</p>
+            <div class='info-box'>
+                <strong>Purchase Order:</strong> {purchaseOrderNumber}<br>
+                <strong>Warehouse:</strong> {warehouseName}<br>
+                <strong>Expected Arrival:</strong> {expectedArrivalText}
+            </div>
+            <p><strong>Order Summary:</strong><br>{lineSummary}</p>
+            <p><strong>Notes:</strong><br>{notesText}</p>
+            <p>Please contact us if you need any clarification.</p>
+            <p>Best regards,<br>The Inventory Team</p>
+        </div>
+        <div class='footer'>
+            <p>© {DateTime.UtcNow.Year} All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>";
+    }
 }

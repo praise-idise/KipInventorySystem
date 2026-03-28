@@ -12,7 +12,7 @@ namespace KipInventorySystem.API.Controllers;
 public class GoodsReceiptsController(IGoodsReceiptService goodsReceiptService) : BaseController
 {
     [HttpPost]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> Receive([FromBody] ReceiveGoodsRequest request, CancellationToken cancellationToken)
     {

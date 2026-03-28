@@ -1,5 +1,6 @@
 using Asp.Versioning;
 using KipInventorySystem.API.Attributes;
+using KipInventorySystem.Application.Services.Inventory.Approvals.DTOs;
 using KipInventorySystem.Application.Services.Inventory.StockAdjustments;
 using KipInventorySystem.Application.Services.Inventory.StockAdjustments.DTOs;
 using KipInventorySystem.Shared.Enums;
@@ -32,7 +33,7 @@ public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentS
         => ComputeResponse(await stockAdjustmentService.GetByIdAsync(stockAdjustmentId, cancellationToken));
 
     [HttpPost]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> CreateDraft(
         [FromBody] CreateStockAdjustmentDraftRequest request,
@@ -50,7 +51,7 @@ public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentS
     }
 
     [HttpPost("{stockAdjustmentId:guid}/submit")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> Submit(Guid stockAdjustmentId, CancellationToken cancellationToken)
     {
@@ -63,7 +64,7 @@ public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentS
     }
 
     [HttpPost("{stockAdjustmentId:guid}/approve")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.APPROVER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> Approve(Guid stockAdjustmentId, CancellationToken cancellationToken)
     {
@@ -75,8 +76,27 @@ public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentS
         return ComputeResponse(await stockAdjustmentService.ApproveAsync(stockAdjustmentId, key, cancellationToken));
     }
 
+    [HttpPost("{stockAdjustmentId:guid}/return")]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.APPROVER)]
+    [RequiresIdempotencyKey]
+    public async Task<IActionResult> ReturnForChanges(
+        Guid stockAdjustmentId,
+        [FromBody] ApprovalDecisionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var validation = ValidateModelState();
+        if (validation != null) return validation;
+
+        if (!TryGetIdempotencyKey(out var key, out var error))
+        {
+            return error!;
+        }
+
+        return ComputeResponse(await stockAdjustmentService.ReturnForChangesAsync(stockAdjustmentId, request, key, cancellationToken));
+    }
+
     [HttpPost("{stockAdjustmentId:guid}/apply")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> Apply(Guid stockAdjustmentId, CancellationToken cancellationToken)
     {
@@ -89,7 +109,7 @@ public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentS
     }
 
     [HttpPost("{stockAdjustmentId:guid}/cancel")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> Cancel(Guid stockAdjustmentId, CancellationToken cancellationToken)
     {

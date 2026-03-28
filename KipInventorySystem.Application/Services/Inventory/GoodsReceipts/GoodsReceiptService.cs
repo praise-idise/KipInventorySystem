@@ -45,10 +45,10 @@ public class GoodsReceiptService(
                     return ServiceResponse<PurchaseOrderDTO>.NotFound("Purchase order was not found.");
                 }
 
-                if (po.Status is not PurchaseOrderStatus.Submitted and not PurchaseOrderStatus.PartiallyReceived)
+                if (po.Status is not PurchaseOrderStatus.Approved and not PurchaseOrderStatus.PartiallyReceived)
                 {
                     return ServiceResponse<PurchaseOrderDTO>.Conflict(
-                        "Goods can only be received for submitted or partially received purchase orders.");
+                        "Goods can only be received for approved or partially received purchase orders.");
                 }
 
                 var poLines = await lineRepo.WhereAsync(x => x.PurchaseOrderId == request.PurchaseOrderId, token);
@@ -87,6 +87,12 @@ public class GoodsReceiptService(
                         continue;
                     }
 
+                    if (poLine.UnitCost <= 0)
+                    {
+                        return ServiceResponse<PurchaseOrderDTO>.Conflict(
+                            $"Purchase order line '{poLine.PurchaseOrderLineId}' has invalid unit cost. Please update the PO line cost before receiving goods.");
+                    }
+
                     poLine.QuantityReceived += requestLine.QuantityReceivedNow;
                     poLine.UpdatedAt = DateTime.UtcNow;
                     lineRepo.Update(poLine);
@@ -97,40 +103,66 @@ public class GoodsReceiptService(
 
                     if (inventory is null)
                     {
+                        var unitCost = InventoryCosting.Round(poLine.UnitCost);
+                        var totalCost = InventoryCosting.Round(unitCost * requestLine.QuantityReceivedNow);
                         inventory = new WarehouseInventory
                         {
                             WarehouseId = po.WarehouseId,
                             ProductId = poLine.ProductId,
                             QuantityOnHand = requestLine.QuantityReceivedNow,
                             ReservedQuantity = 0,
+                            AverageUnitCost = unitCost,
+                            InventoryValue = totalCost,
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow
                         };
                         await inventoryRepo.AddAsync(inventory, token);
+                        movements.Add(new StockMovement
+                        {
+                            ProductId = poLine.ProductId,
+                            WarehouseId = po.WarehouseId,
+                            MovementType = StockMovementType.Receipt,
+                            Quantity = requestLine.QuantityReceivedNow,
+                            UnitCost = unitCost,
+                            TotalCost = totalCost,
+                            OccurredAt = DateTime.UtcNow,
+                            ReferenceType = StockMovementReferenceType.PurchaseOrder,
+                            ReferenceId = po.PurchaseOrderId,
+                            Creator = movementCreator,
+                            CreatorId = movementCreatorId,
+                            Notes = request.Notes,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        });
                     }
                     else
                     {
-                        inventory.QuantityOnHand += requestLine.QuantityReceivedNow;
+                        var (unitCost, totalCost) = InventoryCosting.ApplyInbound(
+                            inventory,
+                            requestLine.QuantityReceivedNow,
+                            poLine.UnitCost);
                         inventory.UpdatedAt = DateTime.UtcNow;
                         inventoryRepo.Update(inventory);
-                    }
 
-                    // Record each physical receipt as a stock movement for audit/history.
-                    movements.Add(new StockMovement
-                    {
-                        ProductId = poLine.ProductId,
-                        WarehouseId = po.WarehouseId,
-                        MovementType = StockMovementType.Receipt,
-                        Quantity = requestLine.QuantityReceivedNow,
-                        OccurredAt = DateTime.UtcNow,
-                        ReferenceType = StockMovementReferenceType.PurchaseOrder,
-                        ReferenceId = po.PurchaseOrderId,
-                        Creator = movementCreator,
-                        CreatorId = movementCreatorId,
-                        Notes = request.Notes,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    });
+                        // Record each physical receipt as a stock movement for audit/history.
+                        movements.Add(new StockMovement
+                        {
+                            ProductId = poLine.ProductId,
+                            WarehouseId = po.WarehouseId,
+                            MovementType = StockMovementType.Receipt,
+                            Quantity = requestLine.QuantityReceivedNow,
+                            UnitCost = unitCost,
+                            TotalCost = totalCost,
+                            OccurredAt = DateTime.UtcNow,
+                            ReferenceType = StockMovementReferenceType.PurchaseOrder,
+                            ReferenceId = po.PurchaseOrderId,
+                            Creator = movementCreator,
+                            CreatorId = movementCreatorId,
+                            Notes = request.Notes,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        });
+                    }
                 }
 
                 if (movements.Count > 0)

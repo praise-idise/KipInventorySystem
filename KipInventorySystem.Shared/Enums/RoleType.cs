@@ -3,5 +3,8 @@
 public enum ROLE_TYPE : int
 {
     ADMIN = 1,
-    USER 
+    USER,
+    PROCUREMENT_OFFICER,
+    WAREHOUSE_OFFICER,
+    APPROVER
 }

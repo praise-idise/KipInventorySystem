@@ -9,6 +9,11 @@ public class CreateStockIssueRequestValidator : AbstractValidator<CreateStockIss
     {
         RuleFor(x => x.WarehouseId).NotEmpty();
         RuleFor(x => x.Notes).MaximumLength(500);
+        RuleFor(x => x.Reason).IsInEnum();
+        RuleFor(x => x.Notes)
+            .NotEmpty()
+            .When(x => x.Reason == Domain.Enums.StockIssueReason.Other)
+            .WithMessage("Notes are required when stock issue reason is Other.");
         RuleFor(x => x.Lines).NotEmpty();
         RuleFor(x => x.Lines)
             .Must(lines => lines.Select(line => line.ProductId).Distinct().Count() == lines.Count)

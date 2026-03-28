@@ -18,6 +18,8 @@ public class WarehouseInventory : BaseEntity
 
     public int QuantityOnHand { get; set; }
     public int ReservedQuantity { get; set; }
+    public decimal AverageUnitCost { get; set; }
+    public decimal InventoryValue { get; set; }
     public int? ReorderThresholdOverride { get; set; }
 
     public int AvailableQuantity => QuantityOnHand - ReservedQuantity;

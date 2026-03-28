@@ -8,6 +8,9 @@ public class CreateStockIssueRequest
     [DefaultValue("d2719a22-6ee4-47f9-8cd0-68d26a596f6f")]
     public Guid WarehouseId { get; set; }
 
+    [DefaultValue(StockIssueReason.InternalUse)]
+    public StockIssueReason Reason { get; set; } = StockIssueReason.InternalUse;
+
     [DefaultValue("Issued for same-day shipment.")]
     public string? Notes { get; set; }
 
@@ -26,6 +29,7 @@ public class StockIssueLineRequest
 public class StockIssueResultDto
 {
     public Guid WarehouseId { get; set; }
+    public StockIssueReason Reason { get; set; }
     public List<StockIssueLineResultDto> Lines { get; set; } = [];
 }
 

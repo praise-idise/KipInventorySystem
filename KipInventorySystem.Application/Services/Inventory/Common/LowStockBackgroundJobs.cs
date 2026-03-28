@@ -54,8 +54,7 @@ public class LowStockBackgroundJobs(
         var poRepo = unitOfWork.Repository<PurchaseOrder>();
         var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
 
-        // --- 1. Identify low stock products for this warehouse ---
-
+        // 1. Identify low-stock products for this warehouse.
         var inventories = await inventoryRepo.WhereAsync(x => x.WarehouseId == warehouseId, cancellationToken);
         if (inventories.Count == 0)
         {
@@ -94,20 +93,19 @@ public class LowStockBackgroundJobs(
 
         var lowStockProductIds = lowStockProducts.Select(x => x.ProductId).ToList();
 
-        // --- 2. Resolve default suppliers ---
-
+        // 2. Resolve default suppliers.
         var defaultSupplierLinks = await productSupplierRepo.WhereAsync(
             x => x.IsDefault && lowStockProductIds.Contains(x.ProductId),
             cancellationToken);
 
         var defaultSupplierByProductId = defaultSupplierLinks
             .GroupBy(x => x.ProductId)
-            .ToDictionary(x => x.Key, x => x.First().SupplierId);
+            .ToDictionary(x => x.Key, x => x.First());
 
         foreach (var product in lowStockProducts.Where(x => !defaultSupplierByProductId.ContainsKey(x.ProductId)))
         {
             logger.LogWarning(
-                "Low stock product requires manual procurement review — no default supplier. WarehouseId={WarehouseId}, ProductId={ProductId}, ProductName={ProductName}",
+                "Low stock product requires manual procurement review - no default supplier. WarehouseId={WarehouseId}, ProductId={ProductId}, ProductName={ProductName}",
                 warehouseId,
                 product.ProductId,
                 product.Name);
@@ -124,9 +122,14 @@ public class LowStockBackgroundJobs(
             return;
         }
 
-        // --- 3. Batch-fetch all open POs and their lines upfront ---
-
-        var openStatuses = new[] { PurchaseOrderStatus.Draft, PurchaseOrderStatus.Submitted, PurchaseOrderStatus.PartiallyReceived };
+        // 3. Batch-fetch all open POs and their lines up front.
+        var openStatuses = new[]
+        {
+            PurchaseOrderStatus.Draft,
+            PurchaseOrderStatus.PendingApproval,
+            PurchaseOrderStatus.Approved,
+            PurchaseOrderStatus.PartiallyReceived
+        };
 
         var openPurchaseOrders = await poRepo.WhereAsync(
             x => x.WarehouseId == warehouseId && openStatuses.Contains(x.Status),
@@ -134,7 +137,6 @@ public class LowStockBackgroundJobs(
 
         var openPurchaseOrderIds = openPurchaseOrders.Select(x => x.PurchaseOrderId).ToHashSet();
 
-        // Batch fetch all relevant open lines in one query instead of per-supplier inside the loop
         var allOpenLines = openPurchaseOrderIds.Count > 0
             ? await lineRepo.WhereAsync(
                 x => openPurchaseOrderIds.Contains(x.PurchaseOrderId) && lowStockProductIds.Contains(x.ProductId),
@@ -147,7 +149,6 @@ public class LowStockBackgroundJobs(
                 x => x.Key,
                 x => x.Sum(line => Math.Max(0, line.QuantityOrdered - line.QuantityReceived)));
 
-        // Batch fetch all draft lines for existing draft POs in one query
         var existingDraftIds = openPurchaseOrders
             .Where(x => x.Status == PurchaseOrderStatus.Draft)
             .Select(x => x.PurchaseOrderId)
@@ -163,10 +164,9 @@ public class LowStockBackgroundJobs(
             .GroupBy(x => x.PurchaseOrderId)
             .ToDictionary(x => x.Key, x => x.ToList());
 
-        // --- 4. Process each supplier group ---
-
+        // 4. Process each supplier group.
         var groupedBySupplier = reorderCandidates
-            .GroupBy(x => defaultSupplierByProductId[x.ProductId])
+            .GroupBy(x => defaultSupplierByProductId[x.ProductId].SupplierId)
             .ToList();
 
         foreach (var supplierGroup in groupedBySupplier)
@@ -181,7 +181,7 @@ public class LowStockBackgroundJobs(
             foreach (var skipped in supplierGroup.Where(x => x.ReorderQuantity <= 0))
             {
                 logger.LogWarning(
-                    "Auto-reorder skipped — ReorderQuantity is not positive. ProductId={ProductId}, ReorderQuantity={ReorderQuantity}",
+                    "Auto-reorder skipped - ReorderQuantity is not positive. ProductId={ProductId}, ReorderQuantity={ReorderQuantity}",
                     skipped.ProductId,
                     skipped.ReorderQuantity);
             }
@@ -189,7 +189,7 @@ public class LowStockBackgroundJobs(
             foreach (var skipped in supplierGroup.Where(x => outstandingByProductId.TryGetValue(x.ProductId, out var qty) && qty > 0))
             {
                 logger.LogInformation(
-                    "Auto-reorder skipped — open PO already has outstanding quantity. WarehouseId={WarehouseId}, SupplierId={SupplierId}, ProductId={ProductId}, Outstanding={Outstanding}",
+                    "Auto-reorder skipped - open PO already has outstanding quantity. WarehouseId={WarehouseId}, SupplierId={SupplierId}, ProductId={ProductId}, Outstanding={Outstanding}",
                     warehouseId,
                     supplierId,
                     skipped.ProductId,
@@ -201,19 +201,39 @@ public class LowStockBackgroundJobs(
                 continue;
             }
 
-            // Reuse existing draft or create a new one — one draft per supplier+warehouse
+            var productsWithValidCost = new List<Product>();
+            foreach (var product in productsToReorder)
+            {
+                var supplierLink = defaultSupplierByProductId[product.ProductId];
+                if (supplierLink.UnitCost <= 0)
+                {
+                    logger.LogWarning(
+                        "Auto-reorder skipped - default supplier unit cost is not positive. WarehouseId={WarehouseId}, SupplierId={SupplierId}, ProductId={ProductId}, UnitCost={UnitCost}",
+                        warehouseId,
+                        supplierId,
+                        product.ProductId,
+                        supplierLink.UnitCost);
+                    continue;
+                }
+
+                productsWithValidCost.Add(product);
+            }
+
+            if (productsWithValidCost.Count == 0)
+            {
+                continue;
+            }
+
+            // Reuse existing draft or create a new one - one draft per supplier+warehouse.
             var targetDraft = openPurchaseOrders
                 .Where(x => x.SupplierId == supplierId && x.Status == PurchaseOrderStatus.Draft)
                 .OrderByDescending(x => x.UpdatedAt)
                 .FirstOrDefault();
 
             var isNewDraft = targetDraft is null;
-
             if (targetDraft is null)
             {
-                string poNumber;
-
-                poNumber = await GenerateUniquePurchaseOrderNumberAsync(cancellationToken);
+                var poNumber = await GenerateUniquePurchaseOrderNumberAsync(cancellationToken);
 
                 targetDraft = new PurchaseOrder
                 {
@@ -233,9 +253,9 @@ public class LowStockBackgroundJobs(
             }
 
             var draftLines = draftLinesByPoId.GetValueOrDefault(targetDraft.PurchaseOrderId, []);
-
-            foreach (var product in productsToReorder)
+            foreach (var product in productsWithValidCost)
             {
+                var supplierLink = defaultSupplierByProductId[product.ProductId];
                 var existingLine = draftLines.FirstOrDefault(x => x.ProductId == product.ProductId);
                 if (existingLine is null)
                 {
@@ -245,23 +265,23 @@ public class LowStockBackgroundJobs(
                         ProductId = product.ProductId,
                         QuantityOrdered = product.ReorderQuantity,
                         QuantityReceived = 0,
-                        UnitCost = 0m, // Requires manual cost entry before submission
+                        UnitCost = supplierLink.UnitCost,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
                     };
-
-                    logger.LogWarning(
-                        "Auto-reorder line created with zero unit cost — manual cost entry required before submission. ProductId={ProductId}, PurchaseOrderId={PurchaseOrderId}",
-                        product.ProductId,
-                        targetDraft.PurchaseOrderId);
 
                     await lineRepo.AddAsync(newLine, cancellationToken);
                     draftLines.Add(newLine);
                 }
                 else
                 {
-                    // Accumulate on existing draft line to avoid duplicate product lines in the same PO
+                    // Accumulate on existing draft line to avoid duplicate product lines in the same PO.
                     existingLine.QuantityOrdered += product.ReorderQuantity;
+                    if (existingLine.UnitCost <= 0)
+                    {
+                        existingLine.UnitCost = supplierLink.UnitCost;
+                    }
+
                     existingLine.UpdatedAt = DateTime.UtcNow;
                     lineRepo.Update(existingLine);
                 }
@@ -276,10 +296,10 @@ public class LowStockBackgroundJobs(
                 warehouseId,
                 supplierId,
                 targetDraft.PurchaseOrderId,
-                productsToReorder.Count);
+                productsWithValidCost.Count);
         }
 
-        // Single save after all supplier groups are processed — avoids partial commit on failure
+        // Single save after all supplier groups are processed.
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 

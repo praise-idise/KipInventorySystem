@@ -67,7 +67,7 @@ public class ProductsController(
     }
 
     [HttpPost("{productId:guid}/suppliers")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     public async Task<IActionResult> CreateSupplierLink(
         Guid productId,
         [FromBody] CreateProductSupplierRequest request,
@@ -80,7 +80,7 @@ public class ProductsController(
     }
 
     [HttpPatch("{productId:guid}/suppliers/{supplierId:guid}")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     public async Task<IActionResult> UpdateSupplierLink(
         Guid productId,
         Guid supplierId,
@@ -94,7 +94,7 @@ public class ProductsController(
     }
 
     [HttpDelete("{productId:guid}/suppliers/{supplierId:guid}")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     public async Task<IActionResult> DeleteSupplierLink(
         Guid productId,
         Guid supplierId,

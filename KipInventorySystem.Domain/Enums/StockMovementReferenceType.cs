@@ -1,9 +1,10 @@
 namespace KipInventorySystem.Domain.Enums;
 
-public enum StockMovementReferenceType:int
+public enum StockMovementReferenceType : int
 {
     PurchaseOrder = 1,
     SalesOrder,
     TransferRequest,
-    StockAdjustment
+    StockAdjustment,
+    StockIssue
 }

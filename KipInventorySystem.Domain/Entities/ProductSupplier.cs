@@ -8,5 +8,6 @@ public class ProductSupplier
     public Guid SupplierId { get; set; }
     public Supplier Supplier { get; set; } = default!;
 
+    public decimal UnitCost { get; set; }
     public bool IsDefault { get; set; }
 }

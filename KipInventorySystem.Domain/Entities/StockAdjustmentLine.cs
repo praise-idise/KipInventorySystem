@@ -15,5 +15,6 @@ public class StockAdjustmentLine : BaseEntity
 
     public int QuantityBefore { get; set; }
     public int QuantityAfter { get; set; }
+    public decimal? UnitCost { get; set; }
     public int Delta => QuantityAfter - QuantityBefore;
 }

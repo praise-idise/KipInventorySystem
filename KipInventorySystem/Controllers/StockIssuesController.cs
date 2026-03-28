@@ -12,7 +12,7 @@ namespace KipInventorySystem.API.Controllers;
 public class StockIssuesController(IStockIssueService stockIssueService) : BaseController
 {
     [HttpPost]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
     public async Task<IActionResult> Create([FromBody] CreateStockIssueRequest request, CancellationToken cancellationToken)
     {

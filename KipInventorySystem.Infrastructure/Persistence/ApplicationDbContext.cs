@@ -22,6 +22,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<TransferRequestLine> TransferRequestLines => Set<TransferRequestLine>();
     public DbSet<StockAdjustment> StockAdjustments => Set<StockAdjustment>();
     public DbSet<StockAdjustmentLine> StockAdjustmentLines => Set<StockAdjustmentLine>();
+    public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
+    public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
     public DbSet<SalesOrderLine> SalesOrderLines => Set<SalesOrderLine>();
 
@@ -118,6 +120,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasFilter("\"IsDefault\" = true")
             .IsUnique();
 
+        modelBuilder.Entity<ProductSupplier>()
+            .Property(e => e.UnitCost)
+            .HasPrecision(18, 2);
+
         modelBuilder.Entity<PurchaseOrder>()
             .HasIndex(e => e.PurchaseOrderNumber)
             .IsUnique();
@@ -126,9 +132,29 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasIndex(e => new { e.WarehouseId, e.ProductId })
             .IsUnique();
 
+        modelBuilder.Entity<WarehouseInventory>()
+            .Property(e => e.AverageUnitCost)
+            .HasPrecision(18, 4);
+
+        modelBuilder.Entity<WarehouseInventory>()
+            .Property(e => e.InventoryValue)
+            .HasPrecision(18, 4);
+
         modelBuilder.Entity<PurchaseOrderLine>()
             .Property(e => e.UnitCost)
             .HasPrecision(18, 2);
+
+        modelBuilder.Entity<StockMovement>()
+            .Property(e => e.UnitCost)
+            .HasPrecision(18, 4);
+
+        modelBuilder.Entity<StockMovement>()
+            .Property(e => e.TotalCost)
+            .HasPrecision(18, 4);
+
+        modelBuilder.Entity<StockAdjustmentLine>()
+            .Property(e => e.UnitCost)
+            .HasPrecision(18, 4);
 
         modelBuilder.Entity<TransferRequest>()
             .HasIndex(e => e.TransferNumber)
@@ -138,9 +164,31 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasIndex(e => e.AdjustmentNumber)
             .IsUnique();
 
+        modelBuilder.Entity<ApprovalRequest>()
+            .HasIndex(e => new { e.DocumentType, e.DocumentId, e.RequestedAt });
+
+        modelBuilder.Entity<ApprovalRequest>()
+            .Property(e => e.Comment)
+            .HasMaxLength(1000);
+
+        modelBuilder.Entity<Customer>()
+            .Property(e => e.Name)
+            .HasColumnType("citext");
+
+        modelBuilder.Entity<Customer>()
+            .HasIndex(e => e.Email)
+            .HasFilter("\"Email\" IS NOT NULL")
+            .IsUnique();
+
         modelBuilder.Entity<SalesOrder>()
             .HasIndex(e => e.SalesOrderNumber)
             .IsUnique();
+
+        modelBuilder.Entity<SalesOrder>()
+            .HasOne(e => e.Customer)
+            .WithMany(e => e.SalesOrders)
+            .HasForeignKey(e => e.CustomerId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<TransferRequestLine>()
             .HasIndex(e => new { e.TransferRequestId, e.ProductId })

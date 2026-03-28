@@ -1,4 +1,5 @@
 using Hangfire;
+using KipInventorySystem.Application.Services.Inventory.Approvals.DTOs;
 using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Application.Services.Inventory.StockAdjustments.DTOs;
 using KipInventorySystem.Domain.Entities;
@@ -75,9 +76,24 @@ public class StockAdjustmentService(
                         token);
 
                     var quantityBefore = inventory?.QuantityOnHand ?? 0;
+                    if (lineRequest.UnitCost.HasValue && lineRequest.UnitCost.Value <= 0)
+                    {
+                        return ServiceResponse<StockAdjustmentDto>.BadRequest(
+                            $"Unit cost must be greater than zero for product '{lineRequest.ProductId}'.");
+                    }
+
+                    if (lineRequest.UnitCost.HasValue && lineRequest.QuantityAfter <= quantityBefore)
+                    {
+                        return ServiceResponse<StockAdjustmentDto>.BadRequest(
+                            $"Unit cost is only allowed for upward adjustments. Product '{lineRequest.ProductId}' does not increase stock.");
+                    }
+
                     var line = mapper.Map<StockAdjustmentLine>(lineRequest);
                     line.StockAdjustmentId = adjustment.StockAdjustmentId;
                     line.QuantityBefore = quantityBefore;
+                    line.UnitCost = lineRequest.UnitCost.HasValue
+                        ? InventoryCosting.Round(lineRequest.UnitCost.Value)
+                        : null;
                     line.CreatedAt = DateTime.UtcNow;
                     line.UpdatedAt = DateTime.UtcNow;
                     lines.Add(line);
@@ -105,14 +121,84 @@ public class StockAdjustmentService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return TransitionAsync(
-            stockAdjustmentId,
-            idempotencyKey,
+        return idempotencyService.ExecuteAsync<Guid, StockAdjustmentDto>(
             "stock-adjustment-submit",
-            "stockAdjustment.submit",
-            fromStatus: StockAdjustmentStatus.Draft,
-            toStatus: StockAdjustmentStatus.Submitted,
-            successMessage: "Stock adjustment submitted.",
+            idempotencyKey,
+            stockAdjustmentId,
+            token => transactionRunner.ExecuteSerializableAsync("stockAdjustment.submit", async _ =>
+            {
+                var currentUser = userContext.GetCurrentUser();
+                var adjustmentRepo = unitOfWork.Repository<StockAdjustment>();
+                var lineRepo = unitOfWork.Repository<StockAdjustmentLine>();
+                var approvalRepo = unitOfWork.Repository<ApprovalRequest>();
+
+                var adjustment = await adjustmentRepo.GetByIdAsync(stockAdjustmentId, token);
+                if (adjustment is null)
+                {
+                    return ServiceResponse<StockAdjustmentDto>.NotFound("Stock adjustment was not found.");
+                }
+
+                var lines = await lineRepo.WhereAsync(x => x.StockAdjustmentId == stockAdjustmentId, token);
+                if (lines.Count == 0)
+                {
+                    return ServiceResponse<StockAdjustmentDto>.BadRequest("Stock adjustment has no lines.");
+                }
+
+                if (adjustment.Status == StockAdjustmentStatus.PendingApproval)
+                {
+                    adjustment.Lines = lines;
+                    return ServiceResponse<StockAdjustmentDto>.Success(
+                        mapper.Map<StockAdjustmentDto>(adjustment),
+                        "Stock adjustment is already awaiting approval.");
+                }
+
+                if (adjustment.Status is StockAdjustmentStatus.Approved or StockAdjustmentStatus.Applied)
+                {
+                    adjustment.Lines = lines;
+                    return ServiceResponse<StockAdjustmentDto>.Success(
+                        mapper.Map<StockAdjustmentDto>(adjustment),
+                        "Stock adjustment is already approved.");
+                }
+
+                if (adjustment.Status is not StockAdjustmentStatus.Draft and not StockAdjustmentStatus.ChangesRequested)
+                {
+                    return ServiceResponse<StockAdjustmentDto>.Conflict("Only draft or returned stock adjustments can be submitted for approval.");
+                }
+
+                var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.StockAdjustment, adjustment.StockAdjustmentId, token);
+                if (pendingApproval is not null)
+                {
+                    return ServiceResponse<StockAdjustmentDto>.Conflict("This stock adjustment already has a pending approval request.");
+                }
+
+                adjustment.Status = StockAdjustmentStatus.PendingApproval;
+                adjustment.UpdatedAt = DateTime.UtcNow;
+                adjustmentRepo.Update(adjustment);
+                adjustment.Lines = lines;
+
+                await approvalRepo.AddAsync(new ApprovalRequest
+                {
+                    DocumentType = ApprovalDocumentType.StockAdjustment,
+                    DocumentId = adjustment.StockAdjustmentId,
+                    Status = ApprovalDecisionStatus.Pending,
+                    RequestedById = currentUser.UserId,
+                    RequestedBy = currentUser.FullName,
+                    RequestedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                }, token);
+
+                logger.LogInformation(
+                    "Inventory audit: operation={Operation}, actor={Actor}, entity=StockAdjustment, entityId={EntityId}, newStatus={NewStatus}",
+                    "SubmitStockAdjustmentForApproval",
+                    currentUser.UserId,
+                    adjustment.StockAdjustmentId,
+                    adjustment.Status);
+
+                return ServiceResponse<StockAdjustmentDto>.Success(
+                    mapper.Map<StockAdjustmentDto>(adjustment),
+                    "Stock adjustment submitted for approval.");
+            }, token),
             cancellationToken);
     }
 
@@ -121,14 +207,66 @@ public class StockAdjustmentService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return TransitionAsync(
-            stockAdjustmentId,
-            idempotencyKey,
+        return idempotencyService.ExecuteAsync<Guid, StockAdjustmentDto>(
             "stock-adjustment-approve",
-            "stockAdjustment.approve",
-            fromStatus: StockAdjustmentStatus.Submitted,
-            toStatus: StockAdjustmentStatus.Approved,
-            successMessage: "Stock adjustment approved.",
+            idempotencyKey,
+            stockAdjustmentId,
+            token => transactionRunner.ExecuteSerializableAsync("stockAdjustment.approve", async _ =>
+            {
+                var currentUser = userContext.GetCurrentUser();
+                var adjustmentRepo = unitOfWork.Repository<StockAdjustment>();
+                var lineRepo = unitOfWork.Repository<StockAdjustmentLine>();
+                var approvalRepo = unitOfWork.Repository<ApprovalRequest>();
+
+                var adjustment = await adjustmentRepo.GetByIdAsync(stockAdjustmentId, token);
+                if (adjustment is null)
+                {
+                    return ServiceResponse<StockAdjustmentDto>.NotFound("Stock adjustment was not found.");
+                }
+
+                var lines = await lineRepo.WhereAsync(x => x.StockAdjustmentId == stockAdjustmentId, token);
+                adjustment.Lines = lines;
+
+                if (adjustment.Status == StockAdjustmentStatus.Approved)
+                {
+                    return ServiceResponse<StockAdjustmentDto>.Success(
+                        mapper.Map<StockAdjustmentDto>(adjustment),
+                        "Stock adjustment already approved.");
+                }
+
+                if (adjustment.Status != StockAdjustmentStatus.PendingApproval)
+                {
+                    return ServiceResponse<StockAdjustmentDto>.Conflict("Only stock adjustments awaiting approval can be approved.");
+                }
+
+                var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.StockAdjustment, adjustment.StockAdjustmentId, token);
+                if (pendingApproval is null)
+                {
+                    return ServiceResponse<StockAdjustmentDto>.Conflict("No pending approval request was found for this stock adjustment.");
+                }
+
+                adjustment.Status = StockAdjustmentStatus.Approved;
+                adjustment.UpdatedAt = DateTime.UtcNow;
+                adjustmentRepo.Update(adjustment);
+
+                pendingApproval.Status = ApprovalDecisionStatus.Approved;
+                pendingApproval.DecidedById = currentUser.UserId;
+                pendingApproval.DecidedBy = currentUser.FullName;
+                pendingApproval.DecidedAt = DateTime.UtcNow;
+                pendingApproval.UpdatedAt = DateTime.UtcNow;
+                approvalRepo.Update(pendingApproval);
+
+                logger.LogInformation(
+                    "Inventory audit: operation={Operation}, actor={Actor}, entity=StockAdjustment, entityId={EntityId}, newStatus={NewStatus}",
+                    "ApproveStockAdjustment",
+                    currentUser.UserId,
+                    adjustment.StockAdjustmentId,
+                    adjustment.Status);
+
+                return ServiceResponse<StockAdjustmentDto>.Success(
+                    mapper.Map<StockAdjustmentDto>(adjustment),
+                    "Stock adjustment approved.");
+            }, token),
             cancellationToken);
     }
 
@@ -207,8 +345,10 @@ public class StockAdjustmentService(
                         {
                             WarehouseId = adjustment.WarehouseId,
                             ProductId = line.ProductId,
-                            QuantityOnHand = line.QuantityAfter,
+                            QuantityOnHand = 0,
                             ReservedQuantity = 0,
+                            AverageUnitCost = 0m,
+                            InventoryValue = 0m,
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow
                         };
@@ -216,22 +356,41 @@ public class StockAdjustmentService(
                     }
 
                     var delta = line.QuantityAfter - line.QuantityBefore;
-                    if (inventory.QuantityOnHand != line.QuantityAfter)
+                    if (line.UnitCost.HasValue && line.UnitCost.Value <= 0)
                     {
-                        inventory.QuantityOnHand = line.QuantityAfter;
-                        inventory.UpdatedAt = DateTime.UtcNow;
-                        inventoryRepo.Update(inventory);
+                        return ServiceResponse<StockAdjustmentDto>.Conflict(
+                            $"Unit cost must be greater than zero for product '{line.ProductId}'.");
                     }
-                    affectedProducts.Add(line.ProductId);
 
-                    if (delta != 0)
+                    if (line.UnitCost.HasValue && delta <= 0)
                     {
+                        return ServiceResponse<StockAdjustmentDto>.Conflict(
+                            $"Unit cost is only allowed for upward adjustments. Product '{line.ProductId}' does not increase stock.");
+                    }
+
+                    if (delta > 0)
+                    {
+                        var inboundUnitCost = line.UnitCost.HasValue
+                            ? InventoryCosting.Round(line.UnitCost.Value)
+                            : InventoryCosting.Round(inventory.AverageUnitCost);
+
+                        if (!line.UnitCost.HasValue && inboundUnitCost <= 0)
+                        {
+                            logger.LogWarning(
+                                "Stock adjustment increase used zero fallback average cost. WarehouseId={WarehouseId}, ProductId={ProductId}",
+                                adjustment.WarehouseId,
+                                line.ProductId);
+                        }
+
+                        var (appliedUnitCost, totalCost) = InventoryCosting.ApplyInbound(inventory, delta, inboundUnitCost);
                         movements.Add(new StockMovement
                         {
                             ProductId = line.ProductId,
                             WarehouseId = adjustment.WarehouseId,
-                            MovementType = delta > 0 ? StockMovementType.AdjustmentIncrease : StockMovementType.AdjustmentDecrease,
-                            Quantity = Math.Abs(delta),
+                            MovementType = StockMovementType.AdjustmentIncrease,
+                            Quantity = delta,
+                            UnitCost = appliedUnitCost,
+                            TotalCost = totalCost,
                             OccurredAt = DateTime.UtcNow,
                             ReferenceType = StockMovementReferenceType.StockAdjustment,
                             ReferenceId = adjustment.StockAdjustmentId,
@@ -242,6 +401,44 @@ public class StockAdjustmentService(
                             UpdatedAt = DateTime.UtcNow
                         });
                     }
+                    else if (delta < 0)
+                    {
+                        var decreaseQuantity = Math.Abs(delta);
+                        if (inventory.QuantityOnHand < decreaseQuantity)
+                        {
+                            return ServiceResponse<StockAdjustmentDto>.Conflict(
+                                $"Insufficient stock to apply downward adjustment for product '{line.ProductId}'.");
+                        }
+
+                        var (appliedUnitCost, totalCost) = InventoryCosting.ApplyOutbound(inventory, decreaseQuantity);
+                        movements.Add(new StockMovement
+                        {
+                            ProductId = line.ProductId,
+                            WarehouseId = adjustment.WarehouseId,
+                            MovementType = StockMovementType.AdjustmentDecrease,
+                            Quantity = decreaseQuantity,
+                            UnitCost = appliedUnitCost,
+                            TotalCost = totalCost,
+                            OccurredAt = DateTime.UtcNow,
+                            ReferenceType = StockMovementReferenceType.StockAdjustment,
+                            ReferenceId = adjustment.StockAdjustmentId,
+                            Creator = movementCreator,
+                            CreatorId = movementCreatorId,
+                            Notes = adjustment.Notes,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        });
+                    }
+
+                    if (inventory.QuantityOnHand != line.QuantityAfter)
+                    {
+                        return ServiceResponse<StockAdjustmentDto>.Conflict(
+                            $"Calculated quantity mismatch for product '{line.ProductId}'. Expected {line.QuantityAfter}, computed {inventory.QuantityOnHand}.");
+                    }
+
+                    inventory.UpdatedAt = DateTime.UtcNow;
+                    inventoryRepo.Update(inventory);
+                    affectedProducts.Add(line.ProductId);
                 }
 
                 if (movements.Count > 0)
@@ -283,6 +480,74 @@ public class StockAdjustmentService(
         return response;
     }
 
+    public Task<ServiceResponse<StockAdjustmentDto>> ReturnForChangesAsync(
+        Guid stockAdjustmentId,
+        ApprovalDecisionRequest request,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        return idempotencyService.ExecuteAsync<Guid, StockAdjustmentDto>(
+            "stock-adjustment-return",
+            idempotencyKey,
+            stockAdjustmentId,
+            token => transactionRunner.ExecuteSerializableAsync("stockAdjustment.returnForChanges", async _ =>
+            {
+                if (string.IsNullOrWhiteSpace(request.Comment))
+                {
+                    return ServiceResponse<StockAdjustmentDto>.BadRequest("A comment is required when returning a stock adjustment for changes.");
+                }
+
+                var currentUser = userContext.GetCurrentUser();
+                var adjustmentRepo = unitOfWork.Repository<StockAdjustment>();
+                var lineRepo = unitOfWork.Repository<StockAdjustmentLine>();
+                var approvalRepo = unitOfWork.Repository<ApprovalRequest>();
+
+                var adjustment = await adjustmentRepo.GetByIdAsync(stockAdjustmentId, token);
+                if (adjustment is null)
+                {
+                    return ServiceResponse<StockAdjustmentDto>.NotFound("Stock adjustment was not found.");
+                }
+
+                var lines = await lineRepo.WhereAsync(x => x.StockAdjustmentId == stockAdjustmentId, token);
+                adjustment.Lines = lines;
+
+                if (adjustment.Status != StockAdjustmentStatus.PendingApproval)
+                {
+                    return ServiceResponse<StockAdjustmentDto>.Conflict("Only stock adjustments awaiting approval can be returned for changes.");
+                }
+
+                var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.StockAdjustment, adjustment.StockAdjustmentId, token);
+                if (pendingApproval is null)
+                {
+                    return ServiceResponse<StockAdjustmentDto>.Conflict("No pending approval request was found for this stock adjustment.");
+                }
+
+                adjustment.Status = StockAdjustmentStatus.ChangesRequested;
+                adjustment.UpdatedAt = DateTime.UtcNow;
+                adjustmentRepo.Update(adjustment);
+
+                pendingApproval.Status = ApprovalDecisionStatus.ChangesRequested;
+                pendingApproval.Comment = request.Comment.Trim();
+                pendingApproval.DecidedById = currentUser.UserId;
+                pendingApproval.DecidedBy = currentUser.FullName;
+                pendingApproval.DecidedAt = DateTime.UtcNow;
+                pendingApproval.UpdatedAt = DateTime.UtcNow;
+                approvalRepo.Update(pendingApproval);
+
+                logger.LogInformation(
+                    "Inventory audit: operation={Operation}, actor={Actor}, entity=StockAdjustment, entityId={EntityId}, newStatus={NewStatus}",
+                    "ReturnStockAdjustmentForChanges",
+                    currentUser.UserId,
+                    adjustment.StockAdjustmentId,
+                    adjustment.Status);
+
+                return ServiceResponse<StockAdjustmentDto>.Success(
+                    mapper.Map<StockAdjustmentDto>(adjustment),
+                    "Stock adjustment returned for changes.");
+            }, token),
+            cancellationToken);
+    }
+
     public Task<ServiceResponse<StockAdjustmentDto>> CancelAsync(
         Guid stockAdjustmentId,
         string idempotencyKey,
@@ -296,6 +561,7 @@ public class StockAdjustmentService(
             {
                 var adjustmentRepo = unitOfWork.Repository<StockAdjustment>();
                 var lineRepo = unitOfWork.Repository<StockAdjustmentLine>();
+                var approvalRepo = unitOfWork.Repository<ApprovalRequest>();
 
                 var adjustment = await adjustmentRepo.GetByIdAsync(stockAdjustmentId, token);
                 if (adjustment is null)
@@ -316,6 +582,17 @@ public class StockAdjustmentService(
                 if (adjustment.Status == StockAdjustmentStatus.Applied)
                 {
                     return ServiceResponse<StockAdjustmentDto>.Conflict("Applied stock adjustments cannot be cancelled.");
+                }
+
+                var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.StockAdjustment, adjustment.StockAdjustmentId, token);
+                if (pendingApproval is not null)
+                {
+                    pendingApproval.Status = ApprovalDecisionStatus.Cancelled;
+                    pendingApproval.DecidedById = userContext.GetCurrentUser().UserId;
+                    pendingApproval.DecidedBy = userContext.GetCurrentUser().FullName;
+                    pendingApproval.DecidedAt = DateTime.UtcNow;
+                    pendingApproval.UpdatedAt = DateTime.UtcNow;
+                    approvalRepo.Update(pendingApproval);
                 }
 
                 adjustment.Status = StockAdjustmentStatus.Cancelled;
@@ -434,66 +711,6 @@ public class StockAdjustmentService(
         return ServiceResponse<PaginationResult<StockAdjustmentDto>>.Success(response);
     }
 
-    private Task<ServiceResponse<StockAdjustmentDto>> TransitionAsync(
-        Guid stockAdjustmentId,
-        string idempotencyKey,
-        string idempotencyOperationName,
-        string transactionOperationName,
-        StockAdjustmentStatus fromStatus,
-        StockAdjustmentStatus toStatus,
-        string successMessage,
-        CancellationToken cancellationToken)
-    {
-        return idempotencyService.ExecuteAsync<Guid, StockAdjustmentDto>(
-            idempotencyOperationName,
-            idempotencyKey,
-            stockAdjustmentId,
-            token => transactionRunner.ExecuteSerializableAsync(transactionOperationName, async _ =>
-            {
-                var adjustmentRepo = unitOfWork.Repository<StockAdjustment>();
-                var lineRepo = unitOfWork.Repository<StockAdjustmentLine>();
-
-                var adjustment = await adjustmentRepo.GetByIdAsync(stockAdjustmentId, token);
-                if (adjustment is null)
-                {
-                    return ServiceResponse<StockAdjustmentDto>.NotFound("Stock adjustment was not found.");
-                }
-
-                var lines = await lineRepo.WhereAsync(x => x.StockAdjustmentId == stockAdjustmentId, token);
-                if (adjustment.Status == toStatus || adjustment.Status == StockAdjustmentStatus.Applied)
-                {
-                    adjustment.Lines = lines;
-                    return ServiceResponse<StockAdjustmentDto>.Success(
-                        mapper.Map<StockAdjustmentDto>(adjustment),
-                        successMessage);
-                }
-
-                if (adjustment.Status != fromStatus)
-                {
-                    return ServiceResponse<StockAdjustmentDto>.Conflict(
-                        $"Invalid transition from '{adjustment.Status}' to '{toStatus}'.");
-                }
-
-                adjustment.Status = toStatus;
-                adjustment.UpdatedAt = DateTime.UtcNow;
-                adjustmentRepo.Update(adjustment);
-                adjustment.Lines = lines;
-
-                logger.LogInformation(
-                    "Inventory audit: operation={Operation}, actor={Actor}, entity=StockAdjustment, entityId={EntityId}, oldStatus={OldStatus}, newStatus={NewStatus}",
-                    transactionOperationName,
-                    userContext.GetCurrentUser().UserId,
-                    adjustment.StockAdjustmentId,
-                    fromStatus,
-                    toStatus);
-
-                return ServiceResponse<StockAdjustmentDto>.Success(
-                    mapper.Map<StockAdjustmentDto>(adjustment),
-                    successMessage);
-            }, token),
-            cancellationToken);
-    }
-
     private async Task<string> GenerateUniqueAdjustmentNumberAsync(CancellationToken cancellationToken)
     {
         var repo = unitOfWork.Repository<StockAdjustment>();
@@ -508,6 +725,23 @@ public class StockAdjustmentService(
         }
 
         throw new InvalidOperationException("Unable to generate unique adjustment number.");
+    }
+
+    private static async Task<ApprovalRequest?> GetPendingApprovalAsync(
+        IBaseRepository<ApprovalRequest> approvalRepo,
+        ApprovalDocumentType documentType,
+        Guid documentId,
+        CancellationToken cancellationToken)
+    {
+        var approvals = await approvalRepo.WhereAsync(
+            x => x.DocumentType == documentType &&
+                 x.DocumentId == documentId &&
+                 x.Status == ApprovalDecisionStatus.Pending,
+            cancellationToken);
+
+        return approvals
+            .OrderByDescending(x => x.RequestedAt)
+            .FirstOrDefault();
     }
 
 }

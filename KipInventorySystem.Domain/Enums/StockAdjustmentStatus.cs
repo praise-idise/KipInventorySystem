@@ -3,7 +3,8 @@ namespace KipInventorySystem.Domain.Enums;
 public enum StockAdjustmentStatus : int
 {
     Draft = 1,
-    Submitted,
+    PendingApproval,
+    ChangesRequested,
     Approved,
     Applied,
     Cancelled

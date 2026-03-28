@@ -48,6 +48,6 @@ public class CreatePurchaseOrderLineRequestValidator : AbstractValidator<CreateP
     {
         RuleFor(x => x.ProductId).NotEmpty();
         RuleFor(x => x.QuantityOrdered).GreaterThan(0);
-        RuleFor(x => x.UnitCost).GreaterThanOrEqualTo(0);
+        RuleFor(x => x.UnitCost).GreaterThan(0);
     }
 }

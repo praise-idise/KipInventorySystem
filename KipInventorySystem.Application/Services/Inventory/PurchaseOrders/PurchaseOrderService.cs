@@ -1,3 +1,6 @@
+using Hangfire;
+using KipInventorySystem.Application.Services.Email;
+using KipInventorySystem.Application.Services.Inventory.Approvals.DTOs;
 using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Application.Services.Inventory.PurchaseOrders.DTOs;
 using KipInventorySystem.Domain.Entities;
@@ -91,15 +94,16 @@ public class PurchaseOrderService(
         {
             var poRepo = unitOfWork.Repository<PurchaseOrder>();
             var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
+
             var po = await poRepo.GetByIdAsync(purchaseOrderId, token);
             if (po is null)
             {
                 return ServiceResponse<PurchaseOrderDTO>.NotFound("Purchase order was not found.");
             }
 
-            if (po.Status != PurchaseOrderStatus.Draft)
+            if (po.Status is not PurchaseOrderStatus.Draft and not PurchaseOrderStatus.ChangesRequested)
             {
-                return ServiceResponse<PurchaseOrderDTO>.Conflict("Only draft purchase orders can be updated.");
+                return ServiceResponse<PurchaseOrderDTO>.Conflict("Only draft or returned purchase orders can be updated.");
             }
 
             var effectiveSupplierId = request.SupplierId ?? po.SupplierId;
@@ -113,7 +117,6 @@ public class PurchaseOrderService(
             if (request.SupplierId.HasValue || request.WarehouseId.HasValue || request.Lines is not null)
             {
                 List<Guid> productIds;
-
                 if (request.Lines is not null)
                 {
                     productIds = [.. request.Lines.Select(x => x.ProductId).Distinct()];
@@ -208,8 +211,10 @@ public class PurchaseOrderService(
             purchaseOrderId,
             token => transactionRunner.ExecuteSerializableAsync("purchaseOrder.submit", async _ =>
             {
+                var currentUser = userContext.GetCurrentUser();
                 var poRepo = unitOfWork.Repository<PurchaseOrder>();
                 var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
+                var approvalRepo = unitOfWork.Repository<ApprovalRequest>();
 
                 var po = await poRepo.GetByIdAsync(purchaseOrderId, token);
                 if (po is null)
@@ -228,38 +233,225 @@ public class PurchaseOrderService(
                     return ServiceResponse<PurchaseOrderDTO>.BadRequest("Purchase order lines must have quantity greater than zero.");
                 }
 
-                if (po.Status == PurchaseOrderStatus.Submitted ||
-                    po.Status == PurchaseOrderStatus.PartiallyReceived ||
-                    po.Status == PurchaseOrderStatus.Received)
+                if (lines.Any(x => x.UnitCost <= 0))
+                {
+                    return ServiceResponse<PurchaseOrderDTO>.BadRequest("Purchase order lines must have unit cost greater than zero.");
+                }
+
+                if (po.Status == PurchaseOrderStatus.PendingApproval)
                 {
                     po.Lines = lines;
                     return ServiceResponse<PurchaseOrderDTO>.Success(
                         mapper.Map<PurchaseOrderDTO>(po),
-                        "Purchase order already submitted.");
+                        "Purchase order is already awaiting approval.");
                 }
 
-                if (po.Status != PurchaseOrderStatus.Draft)
+                if (po.Status is PurchaseOrderStatus.Approved or PurchaseOrderStatus.PartiallyReceived or PurchaseOrderStatus.Received)
                 {
-                    return ServiceResponse<PurchaseOrderDTO>.Conflict("Only draft purchase orders can be submitted.");
+                    po.Lines = lines;
+                    return ServiceResponse<PurchaseOrderDTO>.Success(
+                        mapper.Map<PurchaseOrderDTO>(po),
+                        "Purchase order is already approved.");
                 }
 
-                po.Status = PurchaseOrderStatus.Submitted;
-                po.OrderedAt = DateTime.UtcNow;
+                if (po.Status is not PurchaseOrderStatus.Draft and not PurchaseOrderStatus.ChangesRequested)
+                {
+                    return ServiceResponse<PurchaseOrderDTO>.Conflict("Only draft or returned purchase orders can be submitted for approval.");
+                }
+
+                var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.PurchaseOrder, purchaseOrderId, token);
+                if (pendingApproval is not null)
+                {
+                    return ServiceResponse<PurchaseOrderDTO>.Conflict("This purchase order already has a pending approval request.");
+                }
+
+                po.Status = PurchaseOrderStatus.PendingApproval;
                 po.UpdatedAt = DateTime.UtcNow;
                 poRepo.Update(po);
+
+                await approvalRepo.AddAsync(new ApprovalRequest
+                {
+                    DocumentType = ApprovalDocumentType.PurchaseOrder,
+                    DocumentId = po.PurchaseOrderId,
+                    Status = ApprovalDecisionStatus.Pending,
+                    RequestedById = currentUser.UserId,
+                    RequestedBy = currentUser.FullName,
+                    RequestedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                }, token);
+
                 po.Lines = lines;
 
                 logger.LogInformation(
-                    "Inventory audit: operation={Operation}, actor={Actor}, entity=PurchaseOrder, entityId={EntityId}, oldStatus={OldStatus}, newStatus={NewStatus}",
-                    "SubmitPurchaseOrder",
-                    userContext.GetCurrentUser().UserId,
+                    "Inventory audit: operation={Operation}, actor={Actor}, entity=PurchaseOrder, entityId={EntityId}, newStatus={NewStatus}",
+                    "SubmitPurchaseOrderForApproval",
+                    currentUser.UserId,
                     po.PurchaseOrderId,
-                    PurchaseOrderStatus.Draft,
                     po.Status);
 
                 return ServiceResponse<PurchaseOrderDTO>.Success(
                     mapper.Map<PurchaseOrderDTO>(po),
-                    "Purchase order submitted.");
+                    "Purchase order submitted for approval.");
+            }, token),
+            cancellationToken);
+    }
+
+    public Task<ServiceResponse<PurchaseOrderDTO>> ApproveAsync(
+        Guid purchaseOrderId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        return idempotencyService.ExecuteAsync(
+            "purchase-order-approve",
+            idempotencyKey,
+            purchaseOrderId,
+            token => transactionRunner.ExecuteSerializableAsync("purchaseOrder.approve", async _ =>
+            {
+                var currentUser = userContext.GetCurrentUser();
+                var poRepo = unitOfWork.Repository<PurchaseOrder>();
+                var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
+                var approvalRepo = unitOfWork.Repository<ApprovalRequest>();
+
+                var po = await poRepo.GetByIdAsync(
+                    purchaseOrderId,
+                    query => query
+                        .Include(x => x.Supplier)
+                        .Include(x => x.Warehouse),
+                    token);
+
+                if (po is null)
+                {
+                    return ServiceResponse<PurchaseOrderDTO>.NotFound("Purchase order was not found.");
+                }
+
+                var lines = await lineRepo.WhereAsync(x => x.PurchaseOrderId == purchaseOrderId, token);
+                po.Lines = lines;
+
+                if (po.Status is PurchaseOrderStatus.Approved or PurchaseOrderStatus.PartiallyReceived or PurchaseOrderStatus.Received)
+                {
+                    return ServiceResponse<PurchaseOrderDTO>.Success(
+                        mapper.Map<PurchaseOrderDTO>(po),
+                        "Purchase order is already approved.");
+                }
+
+                if (po.Status != PurchaseOrderStatus.PendingApproval)
+                {
+                    return ServiceResponse<PurchaseOrderDTO>.Conflict("Only purchase orders awaiting approval can be approved.");
+                }
+
+                var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.PurchaseOrder, purchaseOrderId, token);
+                if (pendingApproval is null)
+                {
+                    return ServiceResponse<PurchaseOrderDTO>.Conflict("No pending approval request was found for this purchase order.");
+                }
+
+                po.Status = PurchaseOrderStatus.Approved;
+                po.OrderedAt = DateTime.UtcNow;
+                po.UpdatedAt = DateTime.UtcNow;
+                poRepo.Update(po);
+
+                pendingApproval.Status = ApprovalDecisionStatus.Approved;
+                pendingApproval.DecidedById = currentUser.UserId;
+                pendingApproval.DecidedBy = currentUser.FullName;
+                pendingApproval.DecidedAt = DateTime.UtcNow;
+                pendingApproval.UpdatedAt = DateTime.UtcNow;
+                approvalRepo.Update(pendingApproval);
+
+                if (!string.IsNullOrWhiteSpace(po.Supplier.Email))
+                {
+                    var lineSummary = BuildPurchaseOrderLineSummary(lines);
+                    BackgroundJob.Enqueue<IEmailBackgroundJobs>(
+                        "default",
+                        jobs => jobs.SendPurchaseOrderApprovedEmailAsync(
+                            po.Supplier.Email!,
+                            po.Supplier.Name,
+                            po.PurchaseOrderNumber,
+                            po.Warehouse.Name,
+                            po.ExpectedArrivalDate,
+                            lineSummary,
+                            po.Notes,
+                            default));
+                }
+
+                logger.LogInformation(
+                    "Inventory audit: operation={Operation}, actor={Actor}, entity=PurchaseOrder, entityId={EntityId}, newStatus={NewStatus}",
+                    "ApprovePurchaseOrder",
+                    currentUser.UserId,
+                    po.PurchaseOrderId,
+                    po.Status);
+
+                return ServiceResponse<PurchaseOrderDTO>.Success(
+                    mapper.Map<PurchaseOrderDTO>(po),
+                    "Purchase order approved.");
+            }, token),
+            cancellationToken);
+    }
+
+    public Task<ServiceResponse<PurchaseOrderDTO>> ReturnForChangesAsync(
+        Guid purchaseOrderId,
+        ApprovalDecisionRequest request,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        return idempotencyService.ExecuteAsync(
+            "purchase-order-return",
+            idempotencyKey,
+            new { purchaseOrderId, request.Comment },
+            token => transactionRunner.ExecuteSerializableAsync("purchaseOrder.returnForChanges", async _ =>
+            {
+                if (string.IsNullOrWhiteSpace(request.Comment))
+                {
+                    return ServiceResponse<PurchaseOrderDTO>.BadRequest("A comment is required when returning a purchase order for changes.");
+                }
+
+                var currentUser = userContext.GetCurrentUser();
+                var poRepo = unitOfWork.Repository<PurchaseOrder>();
+                var lineRepo = unitOfWork.Repository<PurchaseOrderLine>();
+                var approvalRepo = unitOfWork.Repository<ApprovalRequest>();
+
+                var po = await poRepo.GetByIdAsync(purchaseOrderId, token);
+                if (po is null)
+                {
+                    return ServiceResponse<PurchaseOrderDTO>.NotFound("Purchase order was not found.");
+                }
+
+                var lines = await lineRepo.WhereAsync(x => x.PurchaseOrderId == purchaseOrderId, token);
+                po.Lines = lines;
+
+                if (po.Status != PurchaseOrderStatus.PendingApproval)
+                {
+                    return ServiceResponse<PurchaseOrderDTO>.Conflict("Only purchase orders awaiting approval can be returned for changes.");
+                }
+
+                var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.PurchaseOrder, purchaseOrderId, token);
+                if (pendingApproval is null)
+                {
+                    return ServiceResponse<PurchaseOrderDTO>.Conflict("No pending approval request was found for this purchase order.");
+                }
+
+                po.Status = PurchaseOrderStatus.ChangesRequested;
+                po.UpdatedAt = DateTime.UtcNow;
+                poRepo.Update(po);
+
+                pendingApproval.Status = ApprovalDecisionStatus.ChangesRequested;
+                pendingApproval.Comment = request.Comment.Trim();
+                pendingApproval.DecidedById = currentUser.UserId;
+                pendingApproval.DecidedBy = currentUser.FullName;
+                pendingApproval.DecidedAt = DateTime.UtcNow;
+                pendingApproval.UpdatedAt = DateTime.UtcNow;
+                approvalRepo.Update(pendingApproval);
+
+                logger.LogInformation(
+                    "Inventory audit: operation={Operation}, actor={Actor}, entity=PurchaseOrder, entityId={EntityId}, newStatus={NewStatus}",
+                    "ReturnPurchaseOrderForChanges",
+                    currentUser.UserId,
+                    po.PurchaseOrderId,
+                    po.Status);
+
+                return ServiceResponse<PurchaseOrderDTO>.Success(
+                    mapper.Map<PurchaseOrderDTO>(po),
+                    "Purchase order returned for changes.");
             }, token),
             cancellationToken);
     }
@@ -274,6 +466,7 @@ public class PurchaseOrderService(
                 .Include(x => x.Lines)
                 .ThenInclude(x => x.Product),
             cancellationToken);
+
         if (po is null)
         {
             return ServiceResponse<PurchaseOrderDTO>.NotFound("Purchase order was not found.");
@@ -403,4 +596,27 @@ public class PurchaseOrderService(
         return dto;
     }
 
+    private static async Task<ApprovalRequest?> GetPendingApprovalAsync(
+        IBaseRepository<ApprovalRequest> approvalRepo,
+        ApprovalDocumentType documentType,
+        Guid documentId,
+        CancellationToken cancellationToken)
+    {
+        var approvals = await approvalRepo.WhereAsync(
+            x => x.DocumentType == documentType &&
+                 x.DocumentId == documentId &&
+                 x.Status == ApprovalDecisionStatus.Pending,
+            cancellationToken);
+
+        return approvals
+            .OrderByDescending(x => x.RequestedAt)
+            .FirstOrDefault();
+    }
+
+    private static string BuildPurchaseOrderLineSummary(IEnumerable<PurchaseOrderLine> lines)
+    {
+        return string.Join(
+            Environment.NewLine,
+            lines.Select(line => $"- ProductId: {line.ProductId}, Qty: {line.QuantityOrdered}, UnitCost: {line.UnitCost:F2}"));
+    }
 }

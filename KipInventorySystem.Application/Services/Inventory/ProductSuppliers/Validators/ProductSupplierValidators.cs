@@ -8,6 +8,7 @@ public class CreateProductSupplierRequestValidator : AbstractValidator<CreatePro
     public CreateProductSupplierRequestValidator()
     {
         RuleFor(x => x.SupplierId).NotEmpty();
+        RuleFor(x => x.UnitCost).GreaterThan(0);
     }
 }
 
@@ -15,5 +16,6 @@ public class UpdateProductSupplierRequestValidator : AbstractValidator<UpdatePro
 {
     public UpdateProductSupplierRequestValidator()
     {
+        RuleFor(x => x.UnitCost).GreaterThan(0);
     }
 }

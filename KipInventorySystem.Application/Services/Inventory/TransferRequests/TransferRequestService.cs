@@ -1,4 +1,5 @@
 using Hangfire;
+using KipInventorySystem.Application.Services.Inventory.Approvals.DTOs;
 using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Application.Services.Inventory.TransferRequests.DTOs;
 using KipInventorySystem.Domain.Entities;
@@ -85,18 +86,16 @@ public class TransferRequestService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        var affectedProducts = new HashSet<Guid>();
-        Guid? affectedWarehouse = null;
-
         var response = await idempotencyService.ExecuteAsync<Guid, TransferRequestDto>(
             "transfer-request-submit",
             idempotencyKey,
             transferRequestId,
             token => transactionRunner.ExecuteSerializableAsync("transferRequest.submit", async _ =>
             {
+                var currentUser = userContext.GetCurrentUser();
                 var transferRepo = unitOfWork.Repository<TransferRequest>();
                 var lineRepo = unitOfWork.Repository<TransferRequestLine>();
-                var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
+                var approvalRepo = unitOfWork.Repository<ApprovalRequest>();
 
                 var transfer = await transferRepo.GetByIdAsync(transferRequestId, token);
                 if (transfer is null)
@@ -110,19 +109,116 @@ public class TransferRequestService(
                     return ServiceResponse<TransferRequestDto>.BadRequest("Transfer request has no lines.");
                 }
 
-                if (transfer.Status == TransferRequestStatus.Submitted ||
-                    transfer.Status == TransferRequestStatus.InTransit ||
-                    transfer.Status == TransferRequestStatus.Completed)
+                if (transfer.Status == TransferRequestStatus.PendingApproval)
                 {
                     transfer.Lines = lines;
                     return ServiceResponse<TransferRequestDto>.Success(
                         mapper.Map<TransferRequestDto>(transfer),
-                        "Transfer request already submitted.");
+                        "Transfer request is already awaiting approval.");
                 }
 
-                if (transfer.Status != TransferRequestStatus.Draft)
+                if (transfer.Status is TransferRequestStatus.Approved or TransferRequestStatus.InTransit or TransferRequestStatus.Completed)
                 {
-                    return ServiceResponse<TransferRequestDto>.Conflict("Only draft transfer requests can be submitted.");
+                    transfer.Lines = lines;
+                    return ServiceResponse<TransferRequestDto>.Success(
+                        mapper.Map<TransferRequestDto>(transfer),
+                        "Transfer request is already approved.");
+                }
+
+                if (transfer.Status is not TransferRequestStatus.Draft and not TransferRequestStatus.ChangesRequested)
+                {
+                    return ServiceResponse<TransferRequestDto>.Conflict("Only draft or returned transfer requests can be submitted for approval.");
+                }
+
+                var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.TransferRequest, transfer.TransferRequestId, token);
+                if (pendingApproval is not null)
+                {
+                    return ServiceResponse<TransferRequestDto>.Conflict("This transfer request already has a pending approval request.");
+                }
+
+                transfer.Status = TransferRequestStatus.PendingApproval;
+                transfer.UpdatedAt = DateTime.UtcNow;
+                transferRepo.Update(transfer);
+
+                await approvalRepo.AddAsync(new ApprovalRequest
+                {
+                    DocumentType = ApprovalDocumentType.TransferRequest,
+                    DocumentId = transfer.TransferRequestId,
+                    Status = ApprovalDecisionStatus.Pending,
+                    RequestedById = currentUser.UserId,
+                    RequestedBy = currentUser.FullName,
+                    RequestedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                }, token);
+
+                transfer.Lines = lines;
+
+                logger.LogInformation(
+                    "Inventory audit: operation={Operation}, actor={Actor}, entity=TransferRequest, entityId={EntityId}, newStatus={NewStatus}",
+                    "SubmitTransferRequestForApproval",
+                    currentUser.UserId,
+                    transfer.TransferRequestId,
+                    transfer.Status);
+
+                return ServiceResponse<TransferRequestDto>.Success(
+                    mapper.Map<TransferRequestDto>(transfer),
+                    "Transfer request submitted for approval.");
+            }, token),
+            cancellationToken);
+
+        return response;
+    }
+
+    public async Task<ServiceResponse<TransferRequestDto>> ApproveAsync(
+        Guid transferRequestId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        var affectedProducts = new HashSet<Guid>();
+        Guid? affectedWarehouse = null;
+
+        var response = await idempotencyService.ExecuteAsync<Guid, TransferRequestDto>(
+            "transfer-request-approve",
+            idempotencyKey,
+            transferRequestId,
+            token => transactionRunner.ExecuteSerializableAsync("transferRequest.approve", async _ =>
+            {
+                var currentUser = userContext.GetCurrentUser();
+                var transferRepo = unitOfWork.Repository<TransferRequest>();
+                var lineRepo = unitOfWork.Repository<TransferRequestLine>();
+                var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
+                var approvalRepo = unitOfWork.Repository<ApprovalRequest>();
+
+                var transfer = await transferRepo.GetByIdAsync(transferRequestId, token);
+                if (transfer is null)
+                {
+                    return ServiceResponse<TransferRequestDto>.NotFound("Transfer request was not found.");
+                }
+
+                var lines = await lineRepo.WhereAsync(x => x.TransferRequestId == transferRequestId, token);
+                if (lines.Count == 0)
+                {
+                    return ServiceResponse<TransferRequestDto>.BadRequest("Transfer request has no lines.");
+                }
+
+                if (transfer.Status == TransferRequestStatus.Approved)
+                {
+                    transfer.Lines = lines;
+                    return ServiceResponse<TransferRequestDto>.Success(
+                        mapper.Map<TransferRequestDto>(transfer),
+                        "Transfer request already approved.");
+                }
+
+                if (transfer.Status != TransferRequestStatus.PendingApproval)
+                {
+                    return ServiceResponse<TransferRequestDto>.Conflict("Only transfer requests awaiting approval can be approved.");
+                }
+
+                var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.TransferRequest, transfer.TransferRequestId, token);
+                if (pendingApproval is null)
+                {
+                    return ServiceResponse<TransferRequestDto>.Conflict("No pending approval request was found for this transfer request.");
                 }
 
                 foreach (var line in lines)
@@ -143,6 +239,7 @@ public class TransferRequestService(
                     var inventory = await inventoryRepo.FindAsync(
                         x => x.WarehouseId == transfer.SourceWarehouseId && x.ProductId == line.ProductId,
                         token);
+
                     if (inventory is null)
                     {
                         continue;
@@ -154,28 +251,102 @@ public class TransferRequestService(
                     affectedProducts.Add(line.ProductId);
                 }
 
-                transfer.Status = TransferRequestStatus.Submitted;
+                transfer.Status = TransferRequestStatus.Approved;
                 transfer.UpdatedAt = DateTime.UtcNow;
                 transferRepo.Update(transfer);
                 transfer.Lines = lines;
                 affectedWarehouse = transfer.SourceWarehouseId;
 
+                pendingApproval.Status = ApprovalDecisionStatus.Approved;
+                pendingApproval.DecidedById = currentUser.UserId;
+                pendingApproval.DecidedBy = currentUser.FullName;
+                pendingApproval.DecidedAt = DateTime.UtcNow;
+                pendingApproval.UpdatedAt = DateTime.UtcNow;
+                approvalRepo.Update(pendingApproval);
+
                 logger.LogInformation(
-                    "Inventory audit: operation={Operation}, actor={Actor}, entity=TransferRequest, entityId={EntityId}, oldStatus={OldStatus}, newStatus={NewStatus}",
-                    "SubmitTransferRequest",
-                    userContext.GetCurrentUser().UserId,
+                    "Inventory audit: operation={Operation}, actor={Actor}, entity=TransferRequest, entityId={EntityId}, newStatus={NewStatus}",
+                    "ApproveTransferRequest",
+                    currentUser.UserId,
                     transfer.TransferRequestId,
-                    TransferRequestStatus.Draft,
                     transfer.Status);
 
                 return ServiceResponse<TransferRequestDto>.Success(
                     mapper.Map<TransferRequestDto>(transfer),
-                    "Transfer request submitted.");
+                    "Transfer request approved.");
             }, token),
             cancellationToken);
 
         EnqueueLowStockChecks(response.Succeeded, affectedWarehouse, affectedProducts);
         return response;
+    }
+
+    public Task<ServiceResponse<TransferRequestDto>> ReturnForChangesAsync(
+        Guid transferRequestId,
+        ApprovalDecisionRequest request,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        return idempotencyService.ExecuteAsync<Guid, TransferRequestDto>(
+            "transfer-request-return",
+            idempotencyKey,
+            transferRequestId,
+            token => transactionRunner.ExecuteSerializableAsync("transferRequest.returnForChanges", async _ =>
+            {
+                if (string.IsNullOrWhiteSpace(request.Comment))
+                {
+                    return ServiceResponse<TransferRequestDto>.BadRequest("A comment is required when returning a transfer request for changes.");
+                }
+
+                var currentUser = userContext.GetCurrentUser();
+                var transferRepo = unitOfWork.Repository<TransferRequest>();
+                var lineRepo = unitOfWork.Repository<TransferRequestLine>();
+                var approvalRepo = unitOfWork.Repository<ApprovalRequest>();
+
+                var transfer = await transferRepo.GetByIdAsync(transferRequestId, token);
+                if (transfer is null)
+                {
+                    return ServiceResponse<TransferRequestDto>.NotFound("Transfer request was not found.");
+                }
+
+                var lines = await lineRepo.WhereAsync(x => x.TransferRequestId == transferRequestId, token);
+                transfer.Lines = lines;
+
+                if (transfer.Status != TransferRequestStatus.PendingApproval)
+                {
+                    return ServiceResponse<TransferRequestDto>.Conflict("Only transfer requests awaiting approval can be returned for changes.");
+                }
+
+                var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.TransferRequest, transfer.TransferRequestId, token);
+                if (pendingApproval is null)
+                {
+                    return ServiceResponse<TransferRequestDto>.Conflict("No pending approval request was found for this transfer request.");
+                }
+
+                transfer.Status = TransferRequestStatus.ChangesRequested;
+                transfer.UpdatedAt = DateTime.UtcNow;
+                transferRepo.Update(transfer);
+
+                pendingApproval.Status = ApprovalDecisionStatus.ChangesRequested;
+                pendingApproval.Comment = request.Comment.Trim();
+                pendingApproval.DecidedById = currentUser.UserId;
+                pendingApproval.DecidedBy = currentUser.FullName;
+                pendingApproval.DecidedAt = DateTime.UtcNow;
+                pendingApproval.UpdatedAt = DateTime.UtcNow;
+                approvalRepo.Update(pendingApproval);
+
+                logger.LogInformation(
+                    "Inventory audit: operation={Operation}, actor={Actor}, entity=TransferRequest, entityId={EntityId}, newStatus={NewStatus}",
+                    "ReturnTransferRequestForChanges",
+                    currentUser.UserId,
+                    transfer.TransferRequestId,
+                    transfer.Status);
+
+                return ServiceResponse<TransferRequestDto>.Success(
+                    mapper.Map<TransferRequestDto>(transfer),
+                    "Transfer request returned for changes.");
+            }, token),
+            cancellationToken);
     }
 
     public async Task<ServiceResponse<TransferRequestDto>> DispatchAsync(
@@ -221,9 +392,9 @@ public class TransferRequestService(
                         "Transfer request already dispatched.");
                 }
 
-                if (transfer.Status != TransferRequestStatus.Submitted)
+                if (transfer.Status != TransferRequestStatus.Approved)
                 {
-                    return ServiceResponse<TransferRequestDto>.Conflict("Only submitted transfer requests can be dispatched.");
+                    return ServiceResponse<TransferRequestDto>.Conflict("Only approved transfer requests can be dispatched.");
                 }
 
                 foreach (var line in lines)
@@ -250,7 +421,7 @@ public class TransferRequestService(
                         continue;
                     }
 
-                    inventory.QuantityOnHand -= line.QuantityRequested;
+                    var (unitCost, totalCost) = InventoryCosting.ApplyOutbound(inventory, line.QuantityRequested);
                     inventory.ReservedQuantity -= line.QuantityRequested;
                     inventory.UpdatedAt = DateTime.UtcNow;
                     inventoryRepo.Update(inventory);
@@ -266,6 +437,8 @@ public class TransferRequestService(
                         WarehouseId = transfer.SourceWarehouseId,
                         MovementType = StockMovementType.TransferOut,
                         Quantity = line.QuantityRequested,
+                        UnitCost = unitCost,
+                        TotalCost = totalCost,
                         OccurredAt = DateTime.UtcNow,
                         ReferenceType = StockMovementReferenceType.TransferRequest,
                         ReferenceId = transfer.TransferRequestId,
@@ -290,7 +463,7 @@ public class TransferRequestService(
                     "DispatchTransferRequest",
                     userContext.GetCurrentUser().UserId,
                     transfer.TransferRequestId,
-                    TransferRequestStatus.Submitted,
+                    TransferRequestStatus.Approved,
                     transfer.Status);
 
                 return ServiceResponse<TransferRequestDto>.Success(
@@ -351,6 +524,16 @@ public class TransferRequestService(
                     return ServiceResponse<TransferRequestDto>.Conflict("Only in-transit transfer requests can be completed.");
                 }
 
+                var transferOutMovements = await movementRepo.WhereAsync(
+                    x => x.ReferenceType == StockMovementReferenceType.TransferRequest &&
+                         x.ReferenceId == transfer.TransferRequestId &&
+                         x.MovementType == StockMovementType.TransferOut,
+                    token);
+
+                var transferOutUnitCostByProduct = transferOutMovements
+                    .GroupBy(x => x.ProductId)
+                    .ToDictionary(x => x.Key, x => x.OrderByDescending(m => m.OccurredAt).First().UnitCost);
+
                 var movements = new List<StockMovement>();
                 foreach (var line in lines)
                 {
@@ -358,43 +541,79 @@ public class TransferRequestService(
                         x => x.WarehouseId == transfer.DestinationWarehouseId && x.ProductId == line.ProductId,
                         token);
                     var qty = line.QuantityTransferred > 0 ? line.QuantityTransferred : line.QuantityRequested;
+                    var inboundUnitCost = transferOutUnitCostByProduct.TryGetValue(line.ProductId, out var transferOutUnitCost)
+                        ? transferOutUnitCost
+                        : inventory?.AverageUnitCost ?? 0m;
+
+                    if (!transferOutUnitCostByProduct.ContainsKey(line.ProductId))
+                    {
+                        logger.LogWarning(
+                            "Transfer-in valuation fallback used because transfer-out movement cost was not found. TransferRequestId={TransferRequestId}, ProductId={ProductId}, UnitCost={UnitCost}",
+                            transfer.TransferRequestId,
+                            line.ProductId,
+                            inboundUnitCost);
+                    }
 
                     if (inventory is null)
                     {
+                        var roundedUnitCost = InventoryCosting.Round(inboundUnitCost);
+                        var totalCost = InventoryCosting.Round(roundedUnitCost * qty);
                         inventory = new WarehouseInventory
                         {
                             WarehouseId = transfer.DestinationWarehouseId,
                             ProductId = line.ProductId,
                             QuantityOnHand = qty,
                             ReservedQuantity = 0,
+                            AverageUnitCost = roundedUnitCost,
+                            InventoryValue = totalCost,
                             CreatedAt = DateTime.UtcNow,
                             UpdatedAt = DateTime.UtcNow
                         };
                         await inventoryRepo.AddAsync(inventory, token);
+
+                        movements.Add(new StockMovement
+                        {
+                            ProductId = line.ProductId,
+                            WarehouseId = transfer.DestinationWarehouseId,
+                            MovementType = StockMovementType.TransferIn,
+                            Quantity = qty,
+                            UnitCost = roundedUnitCost,
+                            TotalCost = totalCost,
+                            OccurredAt = DateTime.UtcNow,
+                            ReferenceType = StockMovementReferenceType.TransferRequest,
+                            ReferenceId = transfer.TransferRequestId,
+                            Creator = movementCreator,
+                            CreatorId = movementCreatorId,
+                            Notes = transfer.Notes,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        });
                     }
                     else
                     {
-                        inventory.QuantityOnHand += qty;
+                        var (unitCost, totalCost) = InventoryCosting.ApplyInbound(inventory, qty, inboundUnitCost);
                         inventory.UpdatedAt = DateTime.UtcNow;
                         inventoryRepo.Update(inventory);
+
+                        movements.Add(new StockMovement
+                        {
+                            ProductId = line.ProductId,
+                            WarehouseId = transfer.DestinationWarehouseId,
+                            MovementType = StockMovementType.TransferIn,
+                            Quantity = qty,
+                            UnitCost = unitCost,
+                            TotalCost = totalCost,
+                            OccurredAt = DateTime.UtcNow,
+                            ReferenceType = StockMovementReferenceType.TransferRequest,
+                            ReferenceId = transfer.TransferRequestId,
+                            Creator = movementCreator,
+                            CreatorId = movementCreatorId,
+                            Notes = transfer.Notes,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        });
                     }
                     affectedProducts.Add(line.ProductId);
-
-                    movements.Add(new StockMovement
-                    {
-                        ProductId = line.ProductId,
-                        WarehouseId = transfer.DestinationWarehouseId,
-                        MovementType = StockMovementType.TransferIn,
-                        Quantity = qty,
-                        OccurredAt = DateTime.UtcNow,
-                        ReferenceType = StockMovementReferenceType.TransferRequest,
-                        ReferenceId = transfer.TransferRequestId,
-                        Creator = movementCreator,
-                        CreatorId = movementCreatorId,
-                        Notes = transfer.Notes,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    });
                 }
 
                 await movementRepo.AddRangeAsync(movements, token);
@@ -441,6 +660,7 @@ public class TransferRequestService(
                 var transferRepo = unitOfWork.Repository<TransferRequest>();
                 var lineRepo = unitOfWork.Repository<TransferRequestLine>();
                 var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
+                var approvalRepo = unitOfWork.Repository<ApprovalRequest>();
 
                 var transfer = await transferRepo.GetByIdAsync(transferRequestId, token);
                 if (transfer is null)
@@ -449,9 +669,9 @@ public class TransferRequestService(
                 }
 
                 var lines = await lineRepo.WhereAsync(x => x.TransferRequestId == transferRequestId, token);
+                transfer.Lines = lines;
                 if (transfer.Status == TransferRequestStatus.Cancelled)
                 {
-                    transfer.Lines = lines;
                     return ServiceResponse<TransferRequestDto>.Success(
                         mapper.Map<TransferRequestDto>(transfer),
                         "Transfer request already cancelled.");
@@ -462,7 +682,7 @@ public class TransferRequestService(
                     return ServiceResponse<TransferRequestDto>.Conflict("In-transit or completed transfer requests cannot be cancelled.");
                 }
 
-                if (transfer.Status == TransferRequestStatus.Submitted)
+                if (transfer.Status == TransferRequestStatus.Approved)
                 {
                     foreach (var line in lines)
                     {
@@ -484,10 +704,20 @@ public class TransferRequestService(
                     affectedWarehouse = transfer.SourceWarehouseId;
                 }
 
+                var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.TransferRequest, transfer.TransferRequestId, token);
+                if (pendingApproval is not null)
+                {
+                    pendingApproval.Status = ApprovalDecisionStatus.Cancelled;
+                    pendingApproval.DecidedById = userContext.GetCurrentUser().UserId;
+                    pendingApproval.DecidedBy = userContext.GetCurrentUser().FullName;
+                    pendingApproval.DecidedAt = DateTime.UtcNow;
+                    pendingApproval.UpdatedAt = DateTime.UtcNow;
+                    approvalRepo.Update(pendingApproval);
+                }
+
                 transfer.Status = TransferRequestStatus.Cancelled;
                 transfer.UpdatedAt = DateTime.UtcNow;
                 transferRepo.Update(transfer);
-                transfer.Lines = lines;
 
                 logger.LogInformation(
                     "Inventory audit: operation={Operation}, actor={Actor}, entity=TransferRequest, entityId={EntityId}, newStatus={NewStatus}",
@@ -670,6 +900,23 @@ public class TransferRequestService(
                 "default",
                 jobs => jobs.EvaluateLowStockAsync(warehouseId.Value, productId, default));
         }
+    }
+
+    private static async Task<ApprovalRequest?> GetPendingApprovalAsync(
+        IBaseRepository<ApprovalRequest> approvalRepo,
+        ApprovalDocumentType documentType,
+        Guid documentId,
+        CancellationToken cancellationToken)
+    {
+        var approvals = await approvalRepo.WhereAsync(
+            x => x.DocumentType == documentType &&
+                 x.DocumentId == documentId &&
+                 x.Status == ApprovalDecisionStatus.Pending,
+            cancellationToken);
+
+        return approvals
+            .OrderByDescending(x => x.RequestedAt)
+            .FirstOrDefault();
     }
 
 }

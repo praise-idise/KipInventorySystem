@@ -20,5 +20,8 @@ public class CreateStockAdjustmentLineRequestValidator : AbstractValidator<Creat
     {
         RuleFor(x => x.ProductId).NotEmpty();
         RuleFor(x => x.QuantityAfter).GreaterThanOrEqualTo(0);
+        RuleFor(x => x.UnitCost)
+            .GreaterThan(0)
+            .When(x => x.UnitCost.HasValue);
     }
 }

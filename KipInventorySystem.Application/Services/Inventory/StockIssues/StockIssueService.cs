@@ -56,6 +56,7 @@ public class StockIssueService(
 
                 var movements = new List<StockMovement>();
                 var lineResults = new List<StockIssueLineResultDto>();
+                var notes = BuildMovementNotes(request.Reason, request.Notes);
 
                 foreach (var line in request.Lines)
                 {
@@ -75,7 +76,7 @@ public class StockIssueService(
                             $"Insufficient available stock for product '{line.ProductId}'. Available={inventory.AvailableQuantity}, requested={line.Quantity}.");
                     }
 
-                    inventory.QuantityOnHand -= line.Quantity;
+                    var (unitCost, totalCost) = InventoryCosting.ApplyOutbound(inventory, line.Quantity);
                     inventory.UpdatedAt = DateTime.UtcNow;
                     inventoryRepo.Update(inventory);
                     affectedProductIds.Add(line.ProductId);
@@ -86,12 +87,14 @@ public class StockIssueService(
                         WarehouseId = request.WarehouseId,
                         MovementType = StockMovementType.Issue,
                         Quantity = line.Quantity,
+                        UnitCost = unitCost,
+                        TotalCost = totalCost,
                         OccurredAt = DateTime.UtcNow,
-                        ReferenceType = StockMovementReferenceType.SalesOrder,
+                        ReferenceType = StockMovementReferenceType.StockIssue,
                         ReferenceId = null,
                         Creator = movementCreator,
                         CreatorId = movementCreatorId,
-                        Notes = request.Notes,
+                        Notes = notes,
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
                     };
@@ -113,12 +116,13 @@ public class StockIssueService(
                     movementCreatorId,
                     request.WarehouseId,
                     movements.Count,
-                    StockMovementReferenceType.SalesOrder,
+                    StockMovementReferenceType.StockIssue,
                     null);
 
                 return ServiceResponse<StockIssueResultDto>.Success(new StockIssueResultDto
                 {
                     WarehouseId = request.WarehouseId,
+                    Reason = request.Reason,
                     Lines = lineResults
                 }, "Stock issue completed.");
             }, token),
@@ -135,5 +139,16 @@ public class StockIssueService(
         }
 
         return response;
+    }
+
+    private static string BuildMovementNotes(StockIssueReason reason, string? notes)
+    {
+        var reasonText = $"Reason: {reason}";
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            return reasonText;
+        }
+
+        return $"{reasonText}. {notes.Trim()}";
     }
 }

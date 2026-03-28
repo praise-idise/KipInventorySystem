@@ -8,6 +8,15 @@ public interface IEmailBackgroundJobs
     Task SendPasswordResetEmailAsync(string toEmail, string firstName, string resetLink, int expirationHours, CancellationToken cancellationToken = default);
     Task SendPasswordChangedEmailAsync(string toEmail, string firstName, string ipAddress, string userAgent, CancellationToken cancellationToken = default);
     Task SendPasswordResetSuccessEmailAsync(string toEmail, string firstName, string ipAddress, string userAgent, CancellationToken cancellationToken = default);
+    Task SendPurchaseOrderApprovedEmailAsync(
+        string toEmail,
+        string supplierName,
+        string purchaseOrderNumber,
+        string warehouseName,
+        DateTime? expectedArrivalDate,
+        string lineSummary,
+        string? notes,
+        CancellationToken cancellationToken = default);
 }
 
 public class EmailBackgroundJobs(IEmailService emailService, ILogger<EmailBackgroundJobs> logger) : IEmailBackgroundJobs
@@ -88,6 +97,41 @@ public class EmailBackgroundJobs(IEmailService emailService, ILogger<EmailBackgr
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to send password reset success email to {Email}", toEmail);
+            throw;
+        }
+    }
+
+    public async Task SendPurchaseOrderApprovedEmailAsync(
+        string toEmail,
+        string supplierName,
+        string purchaseOrderNumber,
+        string warehouseName,
+        DateTime? expectedArrivalDate,
+        string lineSummary,
+        string? notes,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var emailHtml = EmailTemplates.PurchaseOrderApprovedEmail(
+                supplierName,
+                purchaseOrderNumber,
+                warehouseName,
+                expectedArrivalDate,
+                lineSummary,
+                notes);
+
+            await emailService.SendHtmlEmailAsync(
+                toEmail,
+                $"Purchase Order {purchaseOrderNumber} Approved",
+                emailHtml,
+                cancellationToken);
+
+            logger.LogInformation("Purchase order approval email sent to {Email}", toEmail);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send purchase order approval email to {Email}", toEmail);
             throw;
         }
     }

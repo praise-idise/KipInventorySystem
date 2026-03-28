@@ -1,4 +1,5 @@
 using KipInventorySystem.Application.Services.Inventory.TransferRequests.DTOs;
+using KipInventorySystem.Application.Services.Inventory.Approvals.DTOs;
 using KipInventorySystem.Shared.Models;
 using KipInventorySystem.Shared.Responses;
 
@@ -18,6 +19,17 @@ public interface ITransferRequestService
 
     Task<ServiceResponse<TransferRequestDto>> DispatchAsync(
         Guid transferRequestId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+
+    Task<ServiceResponse<TransferRequestDto>> ApproveAsync(
+        Guid transferRequestId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+
+    Task<ServiceResponse<TransferRequestDto>> ReturnForChangesAsync(
+        Guid transferRequestId,
+        ApprovalDecisionRequest request,
         string idempotencyKey,
         CancellationToken cancellationToken = default);
 

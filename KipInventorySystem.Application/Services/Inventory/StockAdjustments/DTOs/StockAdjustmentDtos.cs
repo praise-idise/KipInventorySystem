@@ -24,6 +24,9 @@ public class CreateStockAdjustmentLineRequest
 
     [DefaultValue(95)]
     public int QuantityAfter { get; set; }
+
+    [DefaultValue(215000.00)]
+    public decimal? UnitCost { get; set; }
 }
 
 public class StockAdjustmentLineDto
@@ -32,6 +35,7 @@ public class StockAdjustmentLineDto
     public Guid ProductId { get; set; }
     public int QuantityBefore { get; set; }
     public int QuantityAfter { get; set; }
+    public decimal? UnitCost { get; set; }
     public int Delta { get; set; }
 }
 

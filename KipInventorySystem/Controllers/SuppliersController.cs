@@ -32,7 +32,7 @@ public class SuppliersController(IInventorySupplierService supplierService) : Ba
         => ComputeResponse(await supplierService.GetByIdAsync(supplierId, cancellationToken));
 
     [HttpPost]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     public async Task<IActionResult> Create([FromBody] CreateSupplierRequest request, CancellationToken cancellationToken)
     {
         var validation = ValidateModelState();
@@ -42,7 +42,7 @@ public class SuppliersController(IInventorySupplierService supplierService) : Ba
     }
 
     [HttpPatch("{supplierId:guid}")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     public async Task<IActionResult> Update(
         Guid supplierId,
         [FromBody] UpdateSupplierRequest request,
@@ -55,7 +55,7 @@ public class SuppliersController(IInventorySupplierService supplierService) : Ba
     }
 
     [HttpDelete("{supplierId:guid}")]
-    [Roles(ROLE_TYPE.ADMIN)]
+    [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     public async Task<IActionResult> SoftDelete(Guid supplierId, CancellationToken cancellationToken)
         => ComputeResponse(await supplierService.SoftDeleteAsync(supplierId, cancellationToken));
 }
