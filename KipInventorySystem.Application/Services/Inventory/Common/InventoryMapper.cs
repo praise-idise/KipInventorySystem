@@ -77,7 +77,8 @@ public class InventoryMapper : IRegister
         config.NewConfig<TransferRequestLine, TransferRequestLineDto>();
         config.NewConfig<TransferRequest, TransferRequestDto>();
         config.NewConfig<CreateTransferRequestDraftRequest, TransferRequest>()
-            .Map(dest => dest.Notes, src => Normalize(src.Notes));
+            .Map(dest => dest.Notes, src => Normalize(src.Notes))
+            .Ignore(dest=>dest.Lines);
         config.NewConfig<CreateTransferRequestLineRequest, TransferRequestLine>();
         #endregion
 

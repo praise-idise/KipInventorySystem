@@ -27,12 +27,13 @@ public class TransferRequestService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<CreateTransferRequestDraftRequest, TransferRequestDto>(
+        return idempotencyService.ExecuteAsync(
             "transfer-request-create",
             idempotencyKey,
             request,
             token => transactionRunner.ExecuteSerializableAsync("transferRequest.createDraft", async _ =>
             {
+                // Validate warehouses and products before creating the draft.
                 var validation = await ValidateRequestReferencesAsync(request, token);
                 if (validation is not null)
                 {
@@ -44,6 +45,7 @@ public class TransferRequestService(
                     return ServiceResponse<TransferRequestDto>.BadRequest("Duplicate products are not allowed in transfer request lines.");
                 }
 
+                // Create the transfer header first so generated ids can be reused by the lines.
                 var transfer = mapper.Map<TransferRequest>(request);
                 transfer.TransferNumber = await GenerateUniqueTransferNumberAsync(token);
                 transfer.Status = TransferRequestStatus.Draft;
@@ -55,6 +57,7 @@ public class TransferRequestService(
                 var lineRepo = unitOfWork.Repository<TransferRequestLine>();
                 await transferRepo.AddAsync(transfer, token);
 
+                // Draft lines start with zero transferred quantity.
                 var lines = mapper.Map<List<TransferRequestLine>>(request.Lines);
                 foreach (var line in lines)
                 {
@@ -86,12 +89,13 @@ public class TransferRequestService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        var response = await idempotencyService.ExecuteAsync<Guid, TransferRequestDto>(
+        var response = await idempotencyService.ExecuteAsync(
             "transfer-request-submit",
             idempotencyKey,
             transferRequestId,
             token => transactionRunner.ExecuteSerializableAsync("transferRequest.submit", async _ =>
             {
+                // Submission moves a draft into the approval workflow.
                 var currentUser = userContext.GetCurrentUser();
                 var transferRepo = unitOfWork.Repository<TransferRequest>();
                 var lineRepo = unitOfWork.Repository<TransferRequestLine>();
@@ -130,6 +134,7 @@ public class TransferRequestService(
                     return ServiceResponse<TransferRequestDto>.Conflict("Only draft or returned transfer requests can be submitted for approval.");
                 }
 
+                // Only one pending approval request should exist per transfer.
                 var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.TransferRequest, transfer.TransferRequestId, token);
                 if (pendingApproval is not null)
                 {
@@ -178,12 +183,13 @@ public class TransferRequestService(
         var affectedProducts = new HashSet<Guid>();
         Guid? affectedWarehouse = null;
 
-        var response = await idempotencyService.ExecuteAsync<Guid, TransferRequestDto>(
+        var response = await idempotencyService.ExecuteAsync(
             "transfer-request-approve",
             idempotencyKey,
             transferRequestId,
             token => transactionRunner.ExecuteSerializableAsync("transferRequest.approve", async _ =>
             {
+                // Approval reserves stock in the source warehouse.
                 var currentUser = userContext.GetCurrentUser();
                 var transferRepo = unitOfWork.Repository<TransferRequest>();
                 var lineRepo = unitOfWork.Repository<TransferRequestLine>();
@@ -221,6 +227,7 @@ public class TransferRequestService(
                     return ServiceResponse<TransferRequestDto>.Conflict("No pending approval request was found for this transfer request.");
                 }
 
+                // Check availability before making any reservation changes.
                 foreach (var line in lines)
                 {
                     var inventory = await inventoryRepo.FindAsync(
@@ -234,6 +241,7 @@ public class TransferRequestService(
                     }
                 }
 
+                // Reserve each approved quantity in the source warehouse.
                 foreach (var line in lines)
                 {
                     var inventory = await inventoryRepo.FindAsync(
@@ -287,12 +295,13 @@ public class TransferRequestService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<Guid, TransferRequestDto>(
+        return idempotencyService.ExecuteAsync(
             "transfer-request-return",
             idempotencyKey,
             transferRequestId,
             token => transactionRunner.ExecuteSerializableAsync("transferRequest.returnForChanges", async _ =>
             {
+                // A return decision must include a reason for the requester.
                 if (string.IsNullOrWhiteSpace(request.Comment))
                 {
                     return ServiceResponse<TransferRequestDto>.BadRequest("A comment is required when returning a transfer request for changes.");
@@ -323,6 +332,7 @@ public class TransferRequestService(
                     return ServiceResponse<TransferRequestDto>.Conflict("No pending approval request was found for this transfer request.");
                 }
 
+                // Move the transfer back to an editable state and store the review comment.
                 transfer.Status = TransferRequestStatus.ChangesRequested;
                 transfer.UpdatedAt = DateTime.UtcNow;
                 transferRepo.Update(transfer);
@@ -357,12 +367,13 @@ public class TransferRequestService(
         var affectedProducts = new HashSet<Guid>();
         Guid? affectedWarehouse = null;
 
-        var response = await idempotencyService.ExecuteAsync<Guid, TransferRequestDto>(
+        var response = await idempotencyService.ExecuteAsync(
             "transfer-request-dispatch",
             idempotencyKey,
             transferRequestId,
             token => transactionRunner.ExecuteSerializableAsync("transferRequest.dispatch", async _ =>
             {
+                // Dispatch consumes the reserved stock and records transfer-out movements.
                 var currentUser = userContext.GetCurrentUser();
                 var movementCreatorId = currentUser.UserId;
                 var movementCreator = currentUser.FullName;
@@ -397,6 +408,7 @@ public class TransferRequestService(
                     return ServiceResponse<TransferRequestDto>.Conflict("Only approved transfer requests can be dispatched.");
                 }
 
+                // Dispatch can only use stock that is still on hand and reserved.
                 foreach (var line in lines)
                 {
                     var inventory = await inventoryRepo.FindAsync(
@@ -411,6 +423,7 @@ public class TransferRequestService(
                 }
 
                 var movements = new List<StockMovement>();
+                // Apply the outbound inventory change per line.
                 foreach (var line in lines)
                 {
                     var inventory = await inventoryRepo.FindAsync(
@@ -484,12 +497,13 @@ public class TransferRequestService(
         var affectedProducts = new HashSet<Guid>();
         Guid? affectedWarehouse = null;
 
-        var response = await idempotencyService.ExecuteAsync<Guid, TransferRequestDto>(
+        var response = await idempotencyService.ExecuteAsync(
             "transfer-request-complete",
             idempotencyKey,
             transferRequestId,
             token => transactionRunner.ExecuteSerializableAsync("transferRequest.complete", async _ =>
             {
+                // Completion receives the stock into the destination warehouse.
                 var currentUser = userContext.GetCurrentUser();
                 var movementCreatorId = currentUser.UserId;
                 var movementCreator = currentUser.FullName;
@@ -524,6 +538,7 @@ public class TransferRequestService(
                     return ServiceResponse<TransferRequestDto>.Conflict("Only in-transit transfer requests can be completed.");
                 }
 
+                // Reuse the latest transfer-out cost so inbound valuation stays aligned.
                 var transferOutMovements = await movementRepo.WhereAsync(
                     x => x.ReferenceType == StockMovementReferenceType.TransferRequest &&
                          x.ReferenceId == transfer.TransferRequestId &&
@@ -535,6 +550,7 @@ public class TransferRequestService(
                     .ToDictionary(x => x.Key, x => x.OrderByDescending(m => m.OccurredAt).First().UnitCost);
 
                 var movements = new List<StockMovement>();
+                // Receive each line into destination inventory and create transfer-in movements.
                 foreach (var line in lines)
                 {
                     var inventory = await inventoryRepo.FindAsync(
@@ -547,6 +563,7 @@ public class TransferRequestService(
 
                     if (!transferOutUnitCostByProduct.ContainsKey(line.ProductId))
                     {
+                        // Fall back to current average cost if the transfer-out valuation is missing.
                         logger.LogWarning(
                             "Transfer-in valuation fallback used because transfer-out movement cost was not found. TransferRequestId={TransferRequestId}, ProductId={ProductId}, UnitCost={UnitCost}",
                             transfer.TransferRequestId,
@@ -651,12 +668,13 @@ public class TransferRequestService(
         var affectedProducts = new HashSet<Guid>();
         Guid? affectedWarehouse = null;
 
-        var response = await idempotencyService.ExecuteAsync<Guid, TransferRequestDto>(
+        var response = await idempotencyService.ExecuteAsync(
             "transfer-request-cancel",
             idempotencyKey,
             transferRequestId,
             token => transactionRunner.ExecuteSerializableAsync("transferRequest.cancel", async _ =>
             {
+                // Cancellation may need to release previously reserved stock.
                 var transferRepo = unitOfWork.Repository<TransferRequest>();
                 var lineRepo = unitOfWork.Repository<TransferRequestLine>();
                 var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
@@ -684,6 +702,7 @@ public class TransferRequestService(
 
                 if (transfer.Status == TransferRequestStatus.Approved)
                 {
+                    // Release reservations only when approval had already reserved stock.
                     foreach (var line in lines)
                     {
                         var inventory = await inventoryRepo.FindAsync(
@@ -704,6 +723,7 @@ public class TransferRequestService(
                     affectedWarehouse = transfer.SourceWarehouseId;
                 }
 
+                // Close any pending approval alongside the document cancellation.
                 var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.TransferRequest, transfer.TransferRequestId, token);
                 if (pendingApproval is not null)
                 {
@@ -746,6 +766,7 @@ public class TransferRequestService(
             return ServiceResponse<TransferRequestDto>.NotFound("Transfer request was not found.");
         }
 
+        // Detail view includes the transfer lines.
         transfer.Lines = await lineRepo.WhereAsync(x => x.TransferRequestId == transferRequestId, cancellationToken);
         return ServiceResponse<TransferRequestDto>.Success(mapper.Map<TransferRequestDto>(transfer));
     }
@@ -755,30 +776,15 @@ public class TransferRequestService(
         CancellationToken cancellationToken = default)
     {
         var transferRepo = unitOfWork.Repository<TransferRequest>();
-        var lineRepo = unitOfWork.Repository<TransferRequestLine>();
         var pagedTransfers = await transferRepo.GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.RequestedAt),
             cancellationToken: cancellationToken);
 
-        var transfers = pagedTransfers.Records.ToList();
-        if (transfers.Count > 0)
-        {
-            var ids = transfers.Select(x => x.TransferRequestId).ToHashSet();
-            var lines = await lineRepo.WhereAsync(x => ids.Contains(x.TransferRequestId), cancellationToken);
-            var grouped = lines.GroupBy(x => x.TransferRequestId).ToDictionary(x => x.Key, x => x.ToList());
-            foreach (var transfer in transfers)
-            {
-                if (grouped.TryGetValue(transfer.TransferRequestId, out var transferLines))
-                {
-                    transfer.Lines = transferLines;
-                }
-            }
-        }
-
+        // List view returns transfer headers only; lines stay on the detail endpoint.
         var response = new PaginationResult<TransferRequestDto>
         {
-            Records = transfers.Select(x => mapper.Map<TransferRequestDto>(x)).ToList(),
+            Records = pagedTransfers.Records.Select(x => mapper.Map<TransferRequestDto>(x)).ToList(),
             TotalRecords = pagedTransfers.TotalRecords,
             PageSize = pagedTransfers.PageSize,
             CurrentPage = pagedTransfers.CurrentPage
@@ -799,7 +805,6 @@ public class TransferRequestService(
 
         var term = searchTerm.Trim().ToLower();
         var transferRepo = unitOfWork.Repository<TransferRequest>();
-        var lineRepo = unitOfWork.Repository<TransferRequestLine>();
         var pagedTransfers = await transferRepo.GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.RequestedAt),
@@ -807,24 +812,10 @@ public class TransferRequestService(
                  (x.Notes != null && x.Notes.ToLower().Contains(term)),
             cancellationToken);
 
-        var transfers = pagedTransfers.Records.ToList();
-        if (transfers.Count > 0)
-        {
-            var ids = transfers.Select(x => x.TransferRequestId).ToHashSet();
-            var lines = await lineRepo.WhereAsync(x => ids.Contains(x.TransferRequestId), cancellationToken);
-            var grouped = lines.GroupBy(x => x.TransferRequestId).ToDictionary(x => x.Key, x => x.ToList());
-            foreach (var transfer in transfers)
-            {
-                if (grouped.TryGetValue(transfer.TransferRequestId, out var transferLines))
-                {
-                    transfer.Lines = transferLines;
-                }
-            }
-        }
-
+        // Search results also return transfer headers only for lighter queries.
         var response = new PaginationResult<TransferRequestDto>
         {
-            Records = transfers.Select(x => mapper.Map<TransferRequestDto>(x)).ToList(),
+            Records = pagedTransfers.Records.Select(x => mapper.Map<TransferRequestDto>(x)).ToList(),
             TotalRecords = pagedTransfers.TotalRecords,
             PageSize = pagedTransfers.PageSize,
             CurrentPage = pagedTransfers.CurrentPage
@@ -837,11 +828,13 @@ public class TransferRequestService(
         CreateTransferRequestDraftRequest request,
         CancellationToken cancellationToken)
     {
+        // Transfers must move stock between two different warehouses.
         if (request.SourceWarehouseId == request.DestinationWarehouseId)
         {
             return ServiceResponse<TransferRequestDto>.BadRequest("Source and destination warehouses must be different.");
         }
 
+        // Both warehouse ids must exist before a draft can be saved.
         var warehouseRepo = unitOfWork.Repository<Warehouse>();
         var source = await warehouseRepo.GetByIdAsync(request.SourceWarehouseId, cancellationToken);
         if (source is null)
@@ -855,6 +848,7 @@ public class TransferRequestService(
             return ServiceResponse<TransferRequestDto>.BadRequest("Destination warehouse was not found.");
         }
 
+        // Validate each distinct product once.
         var productRepo = unitOfWork.Repository<Product>();
         foreach (var productId in request.Lines.Select(x => x.ProductId).Distinct())
         {
@@ -871,6 +865,7 @@ public class TransferRequestService(
     private async Task<string> GenerateUniqueTransferNumberAsync(CancellationToken cancellationToken)
     {
         var repo = unitOfWork.Repository<TransferRequest>();
+        // Retry a few generated numbers before failing the transaction.
         for (var i = 0; i < 5; i++)
         {
             var number = documentNumberGenerator.GenerateTransferNumber();
@@ -887,13 +882,14 @@ public class TransferRequestService(
     private static bool HasDuplicateProducts(IEnumerable<Guid> productIds)
         => productIds.GroupBy(x => x).Any(x => x.Count() > 1);
 
-    private void EnqueueLowStockChecks(bool succeeded, Guid? warehouseId, IEnumerable<Guid> productIds)
+    private static void EnqueueLowStockChecks(bool succeeded, Guid? warehouseId, IEnumerable<Guid> productIds)
     {
         if (!succeeded || warehouseId is null)
         {
             return;
         }
 
+        // Recheck only products touched by the transfer workflow.
         foreach (var productId in productIds.Distinct())
         {
             BackgroundJob.Enqueue<ILowStockBackgroundJobs>(
@@ -908,6 +904,7 @@ public class TransferRequestService(
         Guid documentId,
         CancellationToken cancellationToken)
     {
+        // Use the latest pending approval when multiple decisions exist historically.
         var approvals = await approvalRepo.WhereAsync(
             x => x.DocumentType == documentType &&
                  x.DocumentId == documentId &&
