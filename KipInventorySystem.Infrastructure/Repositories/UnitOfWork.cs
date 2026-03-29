@@ -60,6 +60,8 @@ internal class UnitOfWork(ApplicationDbContext context) : IUnitOfWork
             await _transaction.DisposeAsync();
             _transaction = null;
         }
+
+        _context.ChangeTracker.Clear();
     }
 
     public void Dispose()

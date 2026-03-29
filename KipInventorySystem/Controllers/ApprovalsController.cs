@@ -12,11 +12,17 @@ namespace KipInventorySystem.API.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 public class ApprovalsController(IApprovalRequestService approvalRequestService) : BaseController
 {
+    /// <summary>
+    /// List pending approval requests.
+    /// </summary>
     [HttpGet("pending")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.APPROVER)]
     public async Task<IActionResult> GetPending([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
         => ComputeResponse(await approvalRequestService.GetPendingAsync(parameters, cancellationToken));
 
+    /// <summary>
+    /// Get approval history for a document.
+    /// </summary>
     [HttpGet("{documentType}/{documentId:guid}/history")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.APPROVER)]
     public async Task<IActionResult> GetHistory(

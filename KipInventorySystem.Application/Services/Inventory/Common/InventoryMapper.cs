@@ -107,6 +107,8 @@ public class InventoryMapper : IRegister
             .Map(dest => dest.CustomerName, src => src.Customer.Name);
         config.NewConfig<CreateSalesOrderDraftRequest, SalesOrder>()
             .Map(dest => dest.Notes, src => Normalize(src.Notes))
+            .Ignore(dest => dest.CustomerId)
+            .Ignore(dest => dest.Customer)
             .Ignore(dest => dest.Lines);
         config.NewConfig<CreateSalesOrderLineRequest, SalesOrderLine>();
         #endregion

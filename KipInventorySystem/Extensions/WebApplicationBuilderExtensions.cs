@@ -111,7 +111,7 @@ public static class WebApplicationBuilderExtensions
         {
             options.SwaggerDoc("v1", new OpenApiInfo
             {
-                Title = "Application API",
+                Title = "KIP Inventory Management API",
                 Version = "v1",
                 Description = "API for your application"
             });

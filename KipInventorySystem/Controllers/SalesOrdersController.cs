@@ -13,11 +13,17 @@ namespace KipInventorySystem.API.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 public class SalesOrdersController(ISalesOrderService salesOrderService) : BaseController
 {
+    /// <summary>
+    /// List sales orders with pagination.
+    /// </summary>
     [HttpGet]
     [Authorize]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
         => ComputeResponse(await salesOrderService.GetAllAsync(parameters, cancellationToken));
 
+    /// <summary>
+    /// Search sales orders.
+    /// </summary>
     [HttpGet("search")]
     [Authorize]
     public async Task<IActionResult> Search(
@@ -26,11 +32,17 @@ public class SalesOrdersController(ISalesOrderService salesOrderService) : BaseC
         CancellationToken cancellationToken)
         => ComputeResponse(await salesOrderService.SearchAsync(searchTerm, parameters, cancellationToken));
 
+    /// <summary>
+    /// Get a single sales order by id.
+    /// </summary>
     [HttpGet("{salesOrderId:guid}")]
     [Authorize]
     public async Task<IActionResult> GetById(Guid salesOrderId, CancellationToken cancellationToken)
         => ComputeResponse(await salesOrderService.GetByIdAsync(salesOrderId, cancellationToken));
 
+    /// <summary>
+    /// Create a draft sales order.
+    /// </summary>
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
@@ -49,6 +61,9 @@ public class SalesOrdersController(ISalesOrderService salesOrderService) : BaseC
         return ComputeResponse(await salesOrderService.CreateDraftAsync(request, key, cancellationToken));
     }
 
+    /// <summary>
+    /// Update a draft sales order.
+    /// </summary>
     [HttpPatch("{salesOrderId:guid}/draft")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     public async Task<IActionResult> UpdateDraft(
@@ -62,6 +77,9 @@ public class SalesOrdersController(ISalesOrderService salesOrderService) : BaseC
         return ComputeResponse(await salesOrderService.UpdateDraftAsync(salesOrderId, request, cancellationToken));
     }
 
+    /// <summary>
+    /// Confirm a sales order and reserve stock.
+    /// </summary>
     [HttpPost("{salesOrderId:guid}/confirm")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
@@ -75,6 +93,9 @@ public class SalesOrdersController(ISalesOrderService salesOrderService) : BaseC
         return ComputeResponse(await salesOrderService.ConfirmAsync(salesOrderId, key, cancellationToken));
     }
 
+    /// <summary>
+    /// Fulfill reserved quantities on a sales order.
+    /// </summary>
     [HttpPost("{salesOrderId:guid}/fulfill")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
@@ -94,6 +115,9 @@ public class SalesOrdersController(ISalesOrderService salesOrderService) : BaseC
         return ComputeResponse(await salesOrderService.FulfillAsync(salesOrderId, request, key, cancellationToken));
     }
 
+    /// <summary>
+    /// Cancel a sales order and release any reservations.
+    /// </summary>
     [HttpPost("{salesOrderId:guid}/cancel")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]

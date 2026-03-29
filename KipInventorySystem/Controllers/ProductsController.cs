@@ -17,11 +17,17 @@ public class ProductsController(
     IProductService productService,
     IProductSupplierService productSupplierService) : BaseController
 {
+    /// <summary>
+    /// List products with pagination.
+    /// </summary>
     [HttpGet]
     [Authorize]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
         => ComputeResponse(await productService.GetAllAsync(parameters, cancellationToken));
 
+    /// <summary>
+    /// Search products by key fields.
+    /// </summary>
     [HttpGet("search")]
     [Authorize]
     public async Task<IActionResult> Search(
@@ -30,11 +36,17 @@ public class ProductsController(
         CancellationToken cancellationToken)
         => ComputeResponse(await productService.SearchAsync(searchTerm, parameters, cancellationToken));
 
+    /// <summary>
+    /// Get a single product by id.
+    /// </summary>
     [HttpGet("{productId:guid}")]
     [Authorize]
     public async Task<IActionResult> GetById(Guid productId, CancellationToken cancellationToken)
         => ComputeResponse(await productService.GetByIdAsync(productId, cancellationToken));
 
+    /// <summary>
+    /// Create a new product.
+    /// </summary>
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN)]
     [RequiresIdempotencyKey]
@@ -52,6 +64,9 @@ public class ProductsController(
         return ComputeResponse(response);
     }
 
+    /// <summary>
+    /// Update an existing product.
+    /// </summary>
     [HttpPatch("{productId:guid}")]
     [Roles(ROLE_TYPE.ADMIN)]
     public async Task<IActionResult> Update(
@@ -66,6 +81,9 @@ public class ProductsController(
         return ComputeResponse(response);
     }
 
+    /// <summary>
+    /// Link a supplier to a product.
+    /// </summary>
     [HttpPost("{productId:guid}/suppliers")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     public async Task<IActionResult> CreateSupplierLink(
@@ -79,6 +97,9 @@ public class ProductsController(
         return ComputeResponse(await productSupplierService.CreateAsync(productId, request, cancellationToken));
     }
 
+    /// <summary>
+    /// Update a product-supplier link.
+    /// </summary>
     [HttpPatch("{productId:guid}/suppliers/{supplierId:guid}")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     public async Task<IActionResult> UpdateSupplierLink(
@@ -93,6 +114,9 @@ public class ProductsController(
         return ComputeResponse(await productSupplierService.UpdateAsync(productId, supplierId, request, cancellationToken));
     }
 
+    /// <summary>
+    /// Remove a supplier link from a product.
+    /// </summary>
     [HttpDelete("{productId:guid}/suppliers/{supplierId:guid}")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     public async Task<IActionResult> DeleteSupplierLink(
@@ -101,6 +125,9 @@ public class ProductsController(
         CancellationToken cancellationToken)
         => ComputeResponse(await productSupplierService.DeleteAsync(productId, supplierId, cancellationToken));
 
+    /// <summary>
+    /// Soft delete a product.
+    /// </summary>
     [HttpDelete("{productId:guid}")]
     [Roles(ROLE_TYPE.ADMIN)]
     public async Task<IActionResult> SoftDelete(Guid productId, CancellationToken cancellationToken)

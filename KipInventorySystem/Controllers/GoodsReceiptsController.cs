@@ -11,6 +11,9 @@ namespace KipInventorySystem.API.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 public class GoodsReceiptsController(IGoodsReceiptService goodsReceiptService) : BaseController
 {
+    /// <summary>
+    /// Receive goods against an approved purchase order.
+    /// </summary>
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]

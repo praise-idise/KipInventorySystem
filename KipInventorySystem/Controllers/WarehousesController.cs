@@ -13,11 +13,17 @@ namespace KipInventorySystem.API.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 public class WarehousesController(IWarehouseService warehouseService) : BaseController
 {
+    /// <summary>
+    /// List warehouses with pagination.
+    /// </summary>
     [HttpGet]
     [Authorize]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
         => ComputeResponse(await warehouseService.GetAllAsync(parameters, cancellationToken));
 
+    /// <summary>
+    /// Search warehouses by key fields.
+    /// </summary>
     [HttpGet("search")]
     [Authorize]
     public async Task<IActionResult> Search(
@@ -26,11 +32,17 @@ public class WarehousesController(IWarehouseService warehouseService) : BaseCont
         CancellationToken cancellationToken)
         => ComputeResponse(await warehouseService.SearchAsync(searchTerm, parameters, cancellationToken));
 
+    /// <summary>
+    /// Get a single warehouse by id.
+    /// </summary>
     [HttpGet("{warehouseId:guid}")]
     [Authorize]
     public async Task<IActionResult> GetById(Guid warehouseId, CancellationToken cancellationToken)
         => ComputeResponse(await warehouseService.GetByIdAsync(warehouseId, cancellationToken));
 
+    /// <summary>
+    /// Create a new warehouse.
+    /// </summary>
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN)]
     public async Task<IActionResult> Create([FromBody] CreateWarehouseRequest request, CancellationToken cancellationToken)
@@ -41,6 +53,9 @@ public class WarehousesController(IWarehouseService warehouseService) : BaseCont
         return ComputeResponse(await warehouseService.CreateAsync(request, cancellationToken));
     }
 
+    /// <summary>
+    /// Update an existing warehouse.
+    /// </summary>
     [HttpPatch("{warehouseId:guid}")]
     [Roles(ROLE_TYPE.ADMIN)]
     public async Task<IActionResult> Update(
@@ -54,6 +69,9 @@ public class WarehousesController(IWarehouseService warehouseService) : BaseCont
         return ComputeResponse(await warehouseService.UpdateAsync(warehouseId, request, cancellationToken));
     }
 
+    /// <summary>
+    /// Soft delete a warehouse.
+    /// </summary>
     [HttpDelete("{warehouseId:guid}")]
     [Roles(ROLE_TYPE.ADMIN)]
     public async Task<IActionResult> SoftDelete(Guid warehouseId, CancellationToken cancellationToken)

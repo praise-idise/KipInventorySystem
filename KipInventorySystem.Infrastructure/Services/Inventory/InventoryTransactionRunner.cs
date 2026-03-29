@@ -66,7 +66,7 @@ public class InventoryTransactionRunner(
                 activity?.SetTag("inventory.success", response.Succeeded);
                 return response;
             }
-            catch (Exception ex) when (IsRetryableTransactionFailure(ex) && attempt < MaxRetries)
+            catch (Exception ex) when (IsRetryableSerializationFailure(ex) && attempt < MaxRetries)
             {
                 InventoryTelemetry.CommandRetryCounter.Add(1, operationTag);
                 logger.LogWarning(
@@ -79,7 +79,7 @@ public class InventoryTransactionRunner(
                 await unitOfWork.RollbackTransactionAsync(cancellationToken);
                 await Task.Delay(TimeSpan.FromMilliseconds(BaseDelay.TotalMilliseconds * attempt), cancellationToken);
             }
-            catch (Exception ex) when (IsRetryableTransactionFailure(ex))
+            catch (Exception ex) when (IsRetryableSerializationFailure(ex))
             {
                 await unitOfWork.RollbackTransactionAsync(cancellationToken);
                 InventoryTelemetry.CommandFailureCounter.Add(1, operationTag);
@@ -91,6 +91,18 @@ public class InventoryTransactionRunner(
 
                 return CreateConflict<TResponse>(
                     "The operation conflicted with another concurrent transaction. Please retry.");
+            }
+            catch (Exception ex) when (IsUniqueConstraintViolation(ex))
+            {
+                await unitOfWork.RollbackTransactionAsync(cancellationToken);
+                InventoryTelemetry.CommandFailureCounter.Add(1, operationTag);
+                InventoryTelemetry.CommandDurationMs.Record(sw.Elapsed.TotalMilliseconds, operationTag);
+                logger.LogWarning(
+                    ex,
+                    "Unique constraint violation for {OperationName}.",
+                    operationName);
+
+                return CreateConflict<TResponse>(CreateUniqueConstraintMessage(ex));
             }
             catch (Exception ex)
             {
@@ -106,11 +118,6 @@ public class InventoryTransactionRunner(
         InventoryTelemetry.CommandFailureCounter.Add(1, operationTag);
         InventoryTelemetry.CommandDurationMs.Record(sw.Elapsed.TotalMilliseconds, operationTag);
         return CreateConflict<TResponse>("The operation conflicted with another concurrent transaction. Please retry.");
-    }
-
-    private static bool IsRetryableTransactionFailure(Exception exception)
-    {
-        return IsRetryableSerializationFailure(exception) || IsUniqueConstraintViolation(exception);
     }
 
     private static bool IsRetryableSerializationFailure(Exception exception)
@@ -153,6 +160,29 @@ public class InventoryTransactionRunner(
         }
 
         return exception.InnerException is not null && IsUniqueConstraintViolation(exception.InnerException);
+    }
+
+    private static string CreateUniqueConstraintMessage(Exception exception)
+    {
+        var postgresException = FindPostgresException(exception);
+        if (postgresException?.ConstraintName == "IX_Customers_Email")
+        {
+            return "A customer with this email already exists.";
+        }
+
+        return "The operation conflicted with an existing record.";
+    }
+
+    private static PostgresException? FindPostgresException(Exception exception)
+    {
+        if (exception is PostgresException postgresException)
+        {
+            return postgresException;
+        }
+
+        return exception.InnerException is null
+            ? null
+            : FindPostgresException(exception.InnerException);
     }
 
     private static TResponse CreateError<TResponse>(string message) where TResponse : ServiceResponseBase

@@ -34,9 +34,10 @@ public class SalesOrderService(
             request,
             token => transactionRunner.ExecuteSerializableAsync("salesOrder.createDraft", async _ =>
             {
+                // A draft must be tied to a warehouse that can actually cover every requested line.
                 var validation = await ValidateWarehouseAndProductsAsync(
                     request.WarehouseId,
-                    [.. request.Lines.Select(x => x.ProductId)],
+                    [.. request.Lines.Select(x => new WarehouseProductRequirement(x.ProductId, x.QuantityOrdered))],
                     token);
 
                 if (validation is not null)
@@ -49,6 +50,7 @@ public class SalesOrderService(
                     return ServiceResponse<SalesOrderDto>.BadRequest("Duplicate products are not allowed in a sales order.");
                 }
 
+                // Either reuse an existing customer or stage a new one inside the same transaction.
                 var customerIdResult = await ResolveCustomerIdAsync(request.CustomerId, request.Customer, token);
                 if (!customerIdResult.Succeeded)
                 {
@@ -67,6 +69,7 @@ public class SalesOrderService(
                 var lineRepo = unitOfWork.Repository<SalesOrderLine>();
                 await salesOrderRepo.AddAsync(salesOrder, token);
 
+                // Draft lines start unfulfilled and are attached after the sales order id is generated.
                 var lines = mapper.Map<List<SalesOrderLine>>(request.Lines);
                 foreach (var line in lines)
                 {
@@ -124,21 +127,21 @@ public class SalesOrderService(
 
             if (request.CustomerId.HasValue || request.WarehouseId.HasValue || request.Lines is not null)
             {
-                List<Guid> productIds;
+                List<WarehouseProductRequirement> lineRequirements;
                 if (request.Lines is not null)
                 {
-                    productIds = [.. request.Lines.Select(x => x.ProductId).Distinct()];
+                    lineRequirements = [.. request.Lines.Select(x => new WarehouseProductRequirement(x.ProductId, x.QuantityOrdered))];
                 }
                 else
                 {
-                    productIds = [.. (await lineRepo.WhereAsync(x => x.SalesOrderId == salesOrderId, token))
-                        .Select(x => x.ProductId)
-                        .Distinct()];
+                    lineRequirements = [.. (await lineRepo.WhereAsync(x => x.SalesOrderId == salesOrderId, token))
+                        .Select(x => new WarehouseProductRequirement(x.ProductId, x.QuantityOrdered))];
                 }
 
+                // Revalidate against the effective warehouse and the final set of lines after the update.
                 var validation = await ValidateWarehouseAndProductsAsync(
                     effectiveWarehouseId,
-                    productIds,
+                    lineRequirements,
                     token);
 
                 if (validation is not null)
@@ -176,6 +179,7 @@ public class SalesOrderService(
 
             if (request.Lines is not null)
             {
+                // Replacing draft lines is simpler and keeps reserved/fulfilled quantities consistent.
                 var existingLines = await lineRepo.WhereAsync(x => x.SalesOrderId == salesOrderId, token);
                 if (existingLines.Count > 0)
                 {
@@ -254,6 +258,7 @@ public class SalesOrderService(
                     return ServiceResponse<SalesOrderDto>.Conflict("Only draft sales orders can be confirmed.");
                 }
 
+                // Confirmation is the point where draft demand becomes reserved stock.
                 foreach (var line in lines)
                 {
                     var inventory = await inventoryRepo.FindAsync(
@@ -284,6 +289,7 @@ public class SalesOrderService(
                     affectedProducts.Add(line.ProductId);
                 }
 
+                // Once all reservations succeed, the document can move to confirmed.
                 salesOrder.Status = SalesOrderStatus.Confirmed;
                 salesOrder.ConfirmedAt = DateTime.UtcNow;
                 salesOrder.UpdatedAt = DateTime.UtcNow;
@@ -378,6 +384,7 @@ public class SalesOrderService(
                         continue;
                     }
 
+                    // Fulfillment consumes only stock that was already reserved during confirmation.
                     var inventory = await inventoryRepo.FindAsync(
                         x => x.WarehouseId == salesOrder.WarehouseId && x.ProductId == line.ProductId,
                         token);
@@ -421,6 +428,7 @@ public class SalesOrderService(
                     await movementRepo.AddRangeAsync(movements, token);
                 }
 
+                // The overall order status follows the most complete line state after this batch.
                 salesOrder.Status = lines.All(x => x.QuantityFulfilled >= x.QuantityOrdered)
                     ? SalesOrderStatus.Fulfilled
                     : SalesOrderStatus.PartiallyFulfilled;
@@ -486,6 +494,7 @@ public class SalesOrderService(
 
                 if (salesOrder.Status is SalesOrderStatus.Confirmed or SalesOrderStatus.PartiallyFulfilled)
                 {
+                    // Cancelling a reserved order releases only the remaining unfulfilled quantity.
                     foreach (var line in lines)
                     {
                         var remainingToRelease = line.QuantityOrdered - line.QuantityFulfilled;
@@ -605,7 +614,7 @@ public class SalesOrderService(
 
     private async Task<ServiceResponse<SalesOrderDto>?> ValidateWarehouseAndProductsAsync(
         Guid warehouseId,
-        List<Guid> productIds,
+        List<WarehouseProductRequirement> lineRequirements,
         CancellationToken cancellationToken)
     {
         var warehouse = await unitOfWork.Repository<Warehouse>().GetByIdAsync(warehouseId, cancellationToken);
@@ -615,17 +624,39 @@ public class SalesOrderService(
         }
 
         var productRepo = unitOfWork.Repository<Product>();
-        foreach (var productId in productIds.Distinct())
+        var inventoryRepo = unitOfWork.Repository<WarehouseInventory>();
+        foreach (var lineRequirement in lineRequirements
+                     .GroupBy(x => x.ProductId)
+                     .Select(x => new WarehouseProductRequirement(x.Key, x.Sum(y => y.QuantityOrdered))))
         {
-            var product = await productRepo.GetByIdAsync(productId, cancellationToken);
+            // Duplicate line products are already blocked earlier, but grouping keeps validation safe.
+            var product = await productRepo.GetByIdAsync(lineRequirement.ProductId, cancellationToken);
             if (product is null)
             {
-                return ServiceResponse<SalesOrderDto>.BadRequest($"Product '{productId}' was not found.");
+                return ServiceResponse<SalesOrderDto>.BadRequest($"Product '{lineRequirement.ProductId}' was not found.");
+            }
+
+            var inventory = await inventoryRepo.FindAsync(
+                x => x.WarehouseId == warehouseId && x.ProductId == lineRequirement.ProductId,
+                cancellationToken);
+
+            if (inventory is null)
+            {
+                return ServiceResponse<SalesOrderDto>.BadRequest(
+                    $"Product '{product.Name}' is not stocked in warehouse '{warehouse.Name}'.");
+            }
+
+            if (inventory.AvailableQuantity < lineRequirement.QuantityOrdered)
+            {
+                return ServiceResponse<SalesOrderDto>.Conflict(
+                    $"Warehouse '{warehouse.Name}' does not have enough available stock for product '{product.Name}'.");
             }
         }
 
         return null;
     }
+
+    private sealed record WarehouseProductRequirement(Guid ProductId, int QuantityOrdered);
 
     private async Task<ServiceResponse<SalesOrderDto>?> ValidateCustomerAsync(
         Guid customerId,
@@ -661,6 +692,7 @@ public class SalesOrderService(
             return ServiceResponse<Guid?>.BadRequest("Select an existing customer or provide a new customer.");
         }
 
+        // Inline customer creation is allowed for convenience, but email uniqueness still applies.
         var customerRepo = unitOfWork.Repository<Customer>();
         var normalizedEmail = string.IsNullOrWhiteSpace(customerRequest.Email)
             ? null
@@ -686,6 +718,7 @@ public class SalesOrderService(
     private async Task<string> GenerateUniqueSalesOrderNumberAsync(CancellationToken cancellationToken)
     {
         var repo = unitOfWork.Repository<SalesOrder>();
+        // Retry a few times in-memory before failing the transaction on a number collision.
         for (var i = 0; i < 5; i++)
         {
             var number = documentNumberGenerator.GenerateSalesOrderNumber();
@@ -706,6 +739,7 @@ public class SalesOrderService(
             return;
         }
 
+        // Recheck only the products affected by reservation or release work.
         foreach (var productId in productIds.Distinct())
         {
             BackgroundJob.Enqueue<ILowStockBackgroundJobs>(

@@ -173,7 +173,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.HasIndex("DocumentType", "DocumentId", "RequestedAt");
 
-                    b.ToTable("ApprovalRequests");
+                    b.ToTable("ApprovalRequests", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.Customer", b =>
@@ -216,7 +216,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("\"Email\" IS NOT NULL");
 
-                    b.ToTable("Customers");
+                    b.ToTable("Customers", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.Product", b =>
@@ -285,7 +285,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.HasIndex("Sku")
                         .IsUnique();
 
-                    b.ToTable("Products");
+                    b.ToTable("Products", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.ProductSupplier", b =>
@@ -311,7 +311,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.HasIndex("SupplierId");
 
-                    b.ToTable("ProductSuppliers");
+                    b.ToTable("ProductSuppliers", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.ProductVariantAttribute", b =>
@@ -341,7 +341,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.HasIndex("ProductId", "AttributeName")
                         .IsUnique();
 
-                    b.ToTable("ProductVariantAttributes");
+                    b.ToTable("ProductVariantAttributes", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.PurchaseOrder", b =>
@@ -398,7 +398,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.HasIndex("WarehouseId");
 
-                    b.ToTable("PurchaseOrders");
+                    b.ToTable("PurchaseOrders", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.PurchaseOrderLine", b =>
@@ -444,7 +444,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.HasIndex("PurchaseOrderId");
 
-                    b.ToTable("PurchaseOrderLines");
+                    b.ToTable("PurchaseOrderLines", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.SalesOrder", b =>
@@ -504,7 +504,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.HasIndex("WarehouseId");
 
-                    b.ToTable("SalesOrders");
+                    b.ToTable("SalesOrders", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.SalesOrderLine", b =>
@@ -551,7 +551,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.HasIndex("SalesOrderId", "ProductId")
                         .IsUnique();
 
-                    b.ToTable("SalesOrderLines");
+                    b.ToTable("SalesOrderLines", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.StockAdjustment", b =>
@@ -606,7 +606,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.HasIndex("WarehouseId");
 
-                    b.ToTable("StockAdjustments");
+                    b.ToTable("StockAdjustments", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.StockAdjustmentLine", b =>
@@ -652,7 +652,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.HasIndex("StockAdjustmentId");
 
-                    b.ToTable("StockAdjustmentLines");
+                    b.ToTable("StockAdjustmentLines", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.StockMovement", b =>
@@ -723,7 +723,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.HasIndex("WarehouseId");
 
-                    b.ToTable("StockMovements");
+                    b.ToTable("StockMovements", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.Supplier", b =>
@@ -776,7 +776,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("Suppliers");
+                    b.ToTable("Suppliers", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.TransferRequest", b =>
@@ -833,7 +833,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.HasIndex("TransferNumber")
                         .IsUnique();
 
-                    b.ToTable("TransferRequests");
+                    b.ToTable("TransferRequests", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.TransferRequestLine", b =>
@@ -876,7 +876,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.HasIndex("TransferRequestId", "ProductId")
                         .IsUnique();
 
-                    b.ToTable("TransferRequestLines");
+                    b.ToTable("TransferRequestLines", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.Warehouse", b =>
@@ -931,7 +931,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("\"IsDeleted\" = false");
 
-                    b.ToTable("Warehouses");
+                    b.ToTable("Warehouses", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.WarehouseCodeCounter", b =>
@@ -945,7 +945,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.HasKey("StateCode");
 
-                    b.ToTable("WarehouseCodeCounters");
+                    b.ToTable("WarehouseCodeCounters", (string)null);
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.WarehouseInventory", b =>
@@ -999,7 +999,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.HasIndex("WarehouseId", "ProductId")
                         .IsUnique();
 
-                    b.ToTable("WarehouseInventories");
+                    b.ToTable("WarehouseInventories", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>

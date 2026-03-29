@@ -11,6 +11,9 @@ namespace KipInventorySystem.API.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 public class StockIssuesController(IStockIssueService stockIssueService) : BaseController
 {
+    /// <summary>
+    /// Issue stock directly from a warehouse.
+    /// </summary>
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]

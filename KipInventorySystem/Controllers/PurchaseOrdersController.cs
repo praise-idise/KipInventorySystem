@@ -14,11 +14,17 @@ namespace KipInventorySystem.API.Controllers;
 [Route("api/v{version:apiVersion}/[controller]")]
 public class PurchaseOrdersController(IPurchaseOrderService purchaseOrderService) : BaseController
 {
+    /// <summary>
+    /// List purchase orders with pagination.
+    /// </summary>
     [HttpGet]
     [Authorize]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
         => ComputeResponse(await purchaseOrderService.GetAllAsync(parameters, cancellationToken));
 
+    /// <summary>
+    /// Search purchase orders.
+    /// </summary>
     [HttpGet("search")]
     [Authorize]
     public async Task<IActionResult> Search(
@@ -27,11 +33,17 @@ public class PurchaseOrdersController(IPurchaseOrderService purchaseOrderService
         CancellationToken cancellationToken)
         => ComputeResponse(await purchaseOrderService.SearchAsync(searchTerm, parameters, cancellationToken));
 
+    /// <summary>
+    /// Get a single purchase order by id.
+    /// </summary>
     [HttpGet("{purchaseOrderId:guid}")]
     [Authorize]
     public async Task<IActionResult> GetById(Guid purchaseOrderId, CancellationToken cancellationToken)
         => ComputeResponse(await purchaseOrderService.GetByIdAsync(purchaseOrderId, cancellationToken));
 
+    /// <summary>
+    /// Create a draft purchase order.
+    /// </summary>
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     [RequiresIdempotencyKey]
@@ -50,6 +62,9 @@ public class PurchaseOrdersController(IPurchaseOrderService purchaseOrderService
         return ComputeResponse(await purchaseOrderService.CreateDraftAsync(request, key, cancellationToken));
     }
 
+    /// <summary>
+    /// Update a draft purchase order.
+    /// </summary>
     [HttpPatch("{purchaseOrderId:guid}/draft")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     public async Task<IActionResult> UpdateDraft(
@@ -63,6 +78,9 @@ public class PurchaseOrdersController(IPurchaseOrderService purchaseOrderService
         return ComputeResponse(await purchaseOrderService.UpdateDraftAsync(purchaseOrderId, request, cancellationToken));
     }
 
+    /// <summary>
+    /// Submit a purchase order for approval.
+    /// </summary>
     [HttpPost("{purchaseOrderId:guid}/submit")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
     [RequiresIdempotencyKey]
@@ -76,6 +94,9 @@ public class PurchaseOrdersController(IPurchaseOrderService purchaseOrderService
         return ComputeResponse(await purchaseOrderService.SubmitAsync(purchaseOrderId, key, cancellationToken));
     }
 
+    /// <summary>
+    /// Approve a purchase order.
+    /// </summary>
     [HttpPost("{purchaseOrderId:guid}/approve")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.APPROVER)]
     [RequiresIdempotencyKey]
@@ -89,6 +110,9 @@ public class PurchaseOrdersController(IPurchaseOrderService purchaseOrderService
         return ComputeResponse(await purchaseOrderService.ApproveAsync(purchaseOrderId, key, cancellationToken));
     }
 
+    /// <summary>
+    /// Return a purchase order for changes.
+    /// </summary>
     [HttpPost("{purchaseOrderId:guid}/return")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.APPROVER)]
     [RequiresIdempotencyKey]
