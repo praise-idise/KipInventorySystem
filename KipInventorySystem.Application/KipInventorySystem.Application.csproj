@@ -16,6 +16,7 @@
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
 		<PackageReference Include="Hangfire.AspNetCore" />
     <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
   </ItemGroup>
 
 </Project>

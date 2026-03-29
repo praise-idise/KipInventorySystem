@@ -74,6 +74,14 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasMaxLength(3);
 
         modelBuilder.Entity<Supplier>()
+            .Property(e => e.Name)
+            .HasColumnType("citext");
+
+        modelBuilder.Entity<Supplier>()
+            .Property(e => e.Email)
+            .HasColumnType("citext");
+
+        modelBuilder.Entity<Supplier>()
             .HasIndex(e => e.Name)
             .IsUnique();
 
@@ -81,6 +89,14 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasIndex(e => e.Email)
             .HasFilter("\"Email\" IS NOT NULL")
             .IsUnique();
+
+        modelBuilder.Entity<Product>()
+            .Property(e => e.Name)
+            .HasColumnType("citext");
+
+        modelBuilder.Entity<Product>()
+            .Property(e => e.UnitOfMeasure)
+            .HasColumnType("citext");
 
         modelBuilder.Entity<Product>()
             .HasIndex(e => e.Sku)
@@ -191,6 +207,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         modelBuilder.Entity<Customer>()
             .Property(e => e.Name)
+            .HasColumnType("citext");
+
+        modelBuilder.Entity<Customer>()
+            .Property(e => e.Email)
             .HasColumnType("citext");
 
         modelBuilder.Entity<Customer>()

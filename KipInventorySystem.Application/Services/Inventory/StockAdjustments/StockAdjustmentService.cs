@@ -9,6 +9,7 @@ using KipInventorySystem.Shared.Interfaces;
 using KipInventorySystem.Shared.Models;
 using KipInventorySystem.Shared.Responses;
 using MapsterMapper;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace KipInventorySystem.Application.Services.Inventory.StockAdjustments;
@@ -679,13 +680,13 @@ public class StockAdjustmentService(
             return await GetAllAsync(parameters, cancellationToken);
         }
 
-        var term = searchTerm.Trim().ToLower();
+        var pattern = $"%{searchTerm.Trim()}%";
         var adjustmentRepo = unitOfWork.Repository<StockAdjustment>();
         var pagedAdjustments = await adjustmentRepo.GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.RequestedAt),
-            x => x.AdjustmentNumber.ToLower().Contains(term) ||
-                 (x.Notes != null && x.Notes.ToLower().Contains(term)),
+            x => EF.Functions.ILike(x.AdjustmentNumber, pattern) ||
+                 (x.Notes != null && EF.Functions.ILike(x.Notes, pattern)),
             cancellationToken);
 
         var response = new PaginationResult<StockAdjustmentDto>

@@ -9,6 +9,7 @@ using KipInventorySystem.Shared.Interfaces;
 using KipInventorySystem.Shared.Models;
 using KipInventorySystem.Shared.Responses;
 using MapsterMapper;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace KipInventorySystem.Application.Services.Inventory.TransferRequests;
@@ -803,13 +804,13 @@ public class TransferRequestService(
             return await GetAllAsync(parameters, cancellationToken);
         }
 
-        var term = searchTerm.Trim().ToLower();
+        var pattern = $"%{searchTerm.Trim()}%";
         var transferRepo = unitOfWork.Repository<TransferRequest>();
         var pagedTransfers = await transferRepo.GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.RequestedAt),
-            x => x.TransferNumber.ToLower().Contains(term) ||
-                 (x.Notes != null && x.Notes.ToLower().Contains(term)),
+            x => EF.Functions.ILike(x.TransferNumber, pattern) ||
+                 (x.Notes != null && EF.Functions.ILike(x.Notes, pattern)),
             cancellationToken);
 
         // Search results also return transfer headers only for lighter queries.

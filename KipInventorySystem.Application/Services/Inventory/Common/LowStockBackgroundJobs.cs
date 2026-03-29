@@ -1,6 +1,9 @@
+using KipInventorySystem.Application.Services.Email;
 using KipInventorySystem.Domain.Entities;
 using KipInventorySystem.Domain.Enums;
 using KipInventorySystem.Domain.Interfaces;
+using KipInventorySystem.Shared.Enums;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 
 namespace KipInventorySystem.Application.Services.Inventory.Common;
@@ -8,6 +11,8 @@ namespace KipInventorySystem.Application.Services.Inventory.Common;
 public class LowStockBackgroundJobs(
     IUnitOfWork unitOfWork,
     IDocumentNumberGenerator documentNumberGenerator,
+    UserManager<ApplicationUser> userManager,
+    IEmailBackgroundJobs emailBackgroundJobs,
     ILogger<LowStockBackgroundJobs> logger) : ILowStockBackgroundJobs
 {
     public async Task EvaluateLowStockAsync(Guid warehouseId, Guid productId, CancellationToken cancellationToken = default)
@@ -28,6 +33,14 @@ public class LowStockBackgroundJobs(
             return;
         }
 
+        var warehouse = await unitOfWork.Repository<Warehouse>()
+            .GetByIdAsync(warehouseId, cancellationToken);
+
+        if (warehouse is null)
+        {
+            return;
+        }
+
         var threshold = inventory.ReorderThresholdOverride ?? product.ReorderThreshold;
         if (inventory.AvailableQuantity > threshold)
         {
@@ -41,7 +54,13 @@ public class LowStockBackgroundJobs(
             inventory.AvailableQuantity,
             threshold);
 
-        // TODO: Send email to procurement team for low stock alerts
+        await SendLowStockAlertNotificationsAsync(
+            warehouse,
+            product,
+            inventory.AvailableQuantity,
+            threshold,
+            product.ReorderQuantity,
+            cancellationToken);
 
         await EnsureWarehouseReorderDraftsAsync(warehouseId, cancellationToken);
     }
@@ -104,13 +123,21 @@ public class LowStockBackgroundJobs(
 
         foreach (var product in lowStockProducts.Where(x => !defaultSupplierByProductId.ContainsKey(x.ProductId)))
         {
+            var inventory = inventoryByProductId[product.ProductId];
+            var threshold = inventory.ReorderThresholdOverride ?? product.ReorderThreshold;
+
             logger.LogWarning(
                 "Low stock product requires manual procurement review - no default supplier. WarehouseId={WarehouseId}, ProductId={ProductId}, ProductName={ProductName}",
                 warehouseId,
                 product.ProductId,
                 product.Name);
 
-            // TODO: Send email to procurement team for products without default supplier
+            await SendManualProcurementReviewNotificationsAsync(
+                warehouseId,
+                product,
+                inventory.AvailableQuantity,
+                threshold,
+                cancellationToken);
         }
 
         var reorderCandidates = lowStockProducts
@@ -318,5 +345,128 @@ public class LowStockBackgroundJobs(
         }
 
         throw new InvalidOperationException("Unable to generate unique purchase order number for low stock reorder after 5 attempts.");
+    }
+
+    private async Task SendLowStockAlertNotificationsAsync(
+        Warehouse warehouse,
+        Product product,
+        int availableQuantity,
+        int threshold,
+        int reorderQuantity,
+        CancellationToken cancellationToken)
+    {
+        var recipients = await GetNotificationRecipientsAsync(cancellationToken);
+        if (recipients.Count == 0)
+        {
+            logger.LogWarning(
+                "Low stock alert skipped because no active admin or procurement recipients were found. WarehouseId={WarehouseId}, ProductId={ProductId}",
+                warehouse.WarehouseId,
+                product.ProductId);
+            return;
+        }
+
+        foreach (var recipient in recipients)
+        {
+            try
+            {
+                await emailBackgroundJobs.SendLowStockAlertEmailAsync(
+                    recipient.Email!,
+                    FormatRecipientName(recipient),
+                    warehouse.Name,
+                    warehouse.Code,
+                    product.Name,
+                    product.Sku,
+                    availableQuantity,
+                    threshold,
+                    reorderQuantity,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Failed to send low stock notification. WarehouseId={WarehouseId}, ProductId={ProductId}, RecipientUserId={RecipientUserId}",
+                    warehouse.WarehouseId,
+                    product.ProductId,
+                    recipient.Id);
+            }
+        }
+    }
+
+    private async Task SendManualProcurementReviewNotificationsAsync(
+        Guid warehouseId,
+        Product product,
+        int availableQuantity,
+        int threshold,
+        CancellationToken cancellationToken)
+    {
+        var warehouse = await unitOfWork.Repository<Warehouse>().GetByIdAsync(warehouseId, cancellationToken);
+        if (warehouse is null)
+        {
+            return;
+        }
+
+        var recipients = await GetNotificationRecipientsAsync(cancellationToken);
+        if (recipients.Count == 0)
+        {
+            logger.LogWarning(
+                "Manual procurement review alert skipped because no active admin or procurement recipients were found. WarehouseId={WarehouseId}, ProductId={ProductId}",
+                warehouseId,
+                product.ProductId);
+            return;
+        }
+
+        foreach (var recipient in recipients)
+        {
+            try
+            {
+                await emailBackgroundJobs.SendManualProcurementReviewEmailAsync(
+                    recipient.Email!,
+                    FormatRecipientName(recipient),
+                    warehouse.Name,
+                    warehouse.Code,
+                    product.Name,
+                    product.Sku,
+                    availableQuantity,
+                    threshold,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Failed to send manual procurement review notification. WarehouseId={WarehouseId}, ProductId={ProductId}, RecipientUserId={RecipientUserId}",
+                    warehouseId,
+                    product.ProductId,
+                    recipient.Id);
+            }
+        }
+    }
+
+    private async Task<List<ApplicationUser>> GetNotificationRecipientsAsync(CancellationToken cancellationToken)
+    {
+        var procurementUsers = await userManager.GetUsersInRoleAsync(ROLE_TYPE.PROCUREMENT_OFFICER.ToString());
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var adminUsers = await userManager.GetUsersInRoleAsync(ROLE_TYPE.ADMIN.ToString());
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return procurementUsers
+            .Concat(adminUsers)
+            .Where(x => x.IsActive && !x.IsDeleted && !string.IsNullOrWhiteSpace(x.Email))
+            .GroupBy(x => x.Id)
+            .Select(x => x.First())
+            .ToList();
+    }
+
+    private static string FormatRecipientName(ApplicationUser user)
+    {
+        var fullName = $"{user.FirstName} {user.LastName}".Trim();
+        if (!string.IsNullOrWhiteSpace(fullName))
+        {
+            return fullName;
+        }
+
+        return user.UserName ?? "Team";
     }
 }

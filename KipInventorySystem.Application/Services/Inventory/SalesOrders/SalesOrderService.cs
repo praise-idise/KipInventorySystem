@@ -591,13 +591,13 @@ public class SalesOrderService(
             return await GetAllAsync(parameters, cancellationToken);
         }
 
-        var term = searchTerm.Trim().ToLower();
+        var pattern = $"%{searchTerm.Trim()}%";
         var salesOrders = await unitOfWork.Repository<SalesOrder>().GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.OrderedAt),
-            x => x.SalesOrderNumber.ToLower().Contains(term) ||
-                 x.Customer.Name.ToLower().Contains(term) ||
-                 (x.Notes != null && x.Notes.ToLower().Contains(term)),
+            x => EF.Functions.ILike(x.SalesOrderNumber, pattern) ||
+                 EF.Functions.ILike(x.Customer.Name, pattern) ||
+                 (x.Notes != null && EF.Functions.ILike(x.Notes, pattern)),
             cancellationToken,
             include: query => query.Include(x => x.Customer));
 

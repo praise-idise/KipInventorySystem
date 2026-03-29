@@ -32,16 +32,16 @@ builder.Services.AddControllers();
 
 var app = builder.Build();
 
-// Run seeders at startup
-using (var scope = app.Services.CreateScope())
+// Only apply automatic schema changes and seed data in development.
+if (app.Environment.IsDevelopment())
 {
-
+    using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
     var context = services.GetRequiredService<ApplicationDbContext>();
     await context.Database.MigrateAsync();
 
     var seeder = scope.ServiceProvider.GetService<IApplicationSeeder>();
-    if (seeder != null)
+    if (seeder is not null)
     {
         await seeder.SeedAsync();
     }
@@ -49,6 +49,8 @@ using (var scope = app.Services.CreateScope())
 
 // Configure the HTTP request pipeline.
 app.UseMiddleware<ErrorHandlingMiddleware>();
+
+app.UseRateLimiter();
 
 app.UseSerilogRequestLogging();
 

@@ -5,6 +5,7 @@ using KipInventorySystem.Shared.Interfaces;
 using KipInventorySystem.Shared.Models;
 using KipInventorySystem.Shared.Responses;
 using MapsterMapper;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace KipInventorySystem.Application.Services.Inventory.Suppliers;
@@ -90,7 +91,21 @@ public class InventorySupplierService(
 
         if (request.Email is not null)
         {
-            supplier.Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim();
+            var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim();
+            if (!string.IsNullOrWhiteSpace(email))
+            {
+                var duplicateEmail = await supplierRepo.ExistsAsync(
+                    x => x.SupplierId != supplierId && x.Email == email,
+                    cancellationToken);
+
+                if (duplicateEmail)
+                {
+                    return ServiceResponse<SupplierDto>.Conflict(
+                        $"A supplier with email '{email}' already exists.");
+                }
+            }
+
+            supplier.Email = email;
         }
 
         if (request.Phone is not null)
@@ -194,14 +209,14 @@ public class InventorySupplierService(
             return await GetAllAsync(parameters, cancellationToken);
         }
 
-        var term = searchTerm.Trim().ToLower();
+        var pattern = $"%{searchTerm.Trim()}%";
         var suppliers = await unitOfWork.Repository<Supplier>().GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.CreatedAt),
-            x => x.Name.ToLower().Contains(term) ||
-                 (x.Email != null && x.Email.ToLower().Contains(term)) ||
-                 (x.Phone != null && x.Phone.ToLower().Contains(term)) ||
-                 (x.ContactPerson != null && x.ContactPerson.ToLower().Contains(term)),
+            x => EF.Functions.ILike(x.Name, pattern) ||
+                 (x.Email != null && EF.Functions.ILike(x.Email, pattern)) ||
+                 (x.Phone != null && EF.Functions.ILike(x.Phone, pattern)) ||
+                 (x.ContactPerson != null && EF.Functions.ILike(x.ContactPerson, pattern)),
             cancellationToken);
 
         var response = new PaginationResult<SupplierDto>

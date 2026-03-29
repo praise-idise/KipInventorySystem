@@ -226,13 +226,13 @@ public class WarehouseService(
             return await GetAllAsync(parameters, cancellationToken);
         }
 
-        var term = searchTerm.Trim().ToLower();
+        var pattern = $"%{searchTerm.Trim()}%";
         var warehouses = await unitOfWork.Repository<Warehouse>().GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.CreatedAt),
-            x => x.Name.ToLower().Contains(term) ||
-                 x.Code.ToLower().Contains(term) ||
-                 (x.Location != null && x.Location.ToLower().Contains(term)),
+            x => EF.Functions.ILike(x.Name, pattern) ||
+                 EF.Functions.ILike(x.Code, pattern) ||
+                 (x.Location != null && EF.Functions.ILike(x.Location, pattern)),
             cancellationToken);
 
         var response = new PaginationResult<WarehouseDto>

@@ -251,20 +251,20 @@ public partial class ProductService(
             return await GetAllAsync(parameters, cancellationToken);
         }
 
-        var term = searchTerm.Trim().ToLower();
+        var pattern = $"%{searchTerm.Trim()}%";
         var products = await unitOfWork.Repository<Product>().GetPagedProjectionAsync(
             parameters,
             query => query.OrderByDescending(x => x.CreatedAt),
             BuildSummaryProjection(),
-            x => x.Name.ToLower().Contains(term) ||
-                 x.Sku.ToLower().Contains(term) ||
-                 x.ItemCode.ToLower().Contains(term) ||
-                 x.BrandCode.ToLower().Contains(term) ||
-                 x.CategoryCode.ToLower().Contains(term) ||
-                 x.UnitOfMeasure.ToLower().Contains(term) ||
+            x => EF.Functions.ILike(x.Name, pattern) ||
+                 EF.Functions.ILike(x.Sku, pattern) ||
+                 EF.Functions.ILike(x.ItemCode, pattern) ||
+                 EF.Functions.ILike(x.BrandCode, pattern) ||
+                 EF.Functions.ILike(x.CategoryCode, pattern) ||
+                 EF.Functions.ILike(x.UnitOfMeasure, pattern) ||
                  x.VariantAttributes.Any(attribute =>
-                     attribute.AttributeName.ToLower().Contains(term) ||
-                     attribute.AttributeCode.ToLower().Contains(term)),
+                     EF.Functions.ILike(attribute.AttributeName, pattern) ||
+                     EF.Functions.ILike(attribute.AttributeCode, pattern)),
             cancellationToken);
 
         var response = new PaginationResult<ProductDTO>
@@ -307,14 +307,11 @@ public partial class ProductService(
         CancellationToken cancellationToken,
         Guid? productIdToIgnore = null)
     {
-        var normalizedName = normalizedProduct.Name.Trim().ToUpperInvariant();
-        var normalizedUnitOfMeasure = normalizedProduct.UnitOfMeasure.Trim().ToUpperInvariant();
-
         var candidates = await productRepo.WhereAsync(
             x => x.CategoryCode == normalizedProduct.CategoryCode &&
                  x.BrandCode == normalizedProduct.BrandCode &&
-                 x.Name.ToUpper() == normalizedName &&
-                 x.UnitOfMeasure.ToUpper() == normalizedUnitOfMeasure,
+                 x.Name == normalizedProduct.Name &&
+                 x.UnitOfMeasure == normalizedProduct.UnitOfMeasure,
             cancellationToken);
 
         foreach (var candidate in candidates)

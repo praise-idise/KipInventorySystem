@@ -8,6 +8,7 @@ using KipInventorySystem.Shared.Interfaces;
 using KipInventorySystem.Shared.Models;
 using KipInventorySystem.Shared.Responses;
 using MapsterMapper;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace KipInventorySystem.Application.Services.Inventory.OpeningBalances;
@@ -226,13 +227,13 @@ public class OpeningBalanceService(
             return await GetAllAsync(parameters, cancellationToken);
         }
 
-        var term = searchTerm.Trim().ToLower();
+        var pattern = $"%{searchTerm.Trim()}%";
         var openingBalanceRepo = unitOfWork.Repository<OpeningBalance>();
         var pagedOpeningBalances = await openingBalanceRepo.GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.AppliedAt),
-            x => x.OpeningBalanceNumber.ToLower().Contains(term) ||
-                 (x.Notes != null && x.Notes.ToLower().Contains(term)),
+            x => EF.Functions.ILike(x.OpeningBalanceNumber, pattern) ||
+                 (x.Notes != null && EF.Functions.ILike(x.Notes, pattern)),
             cancellationToken);
 
         var response = new PaginationResult<OpeningBalanceDto>

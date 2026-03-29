@@ -507,13 +507,13 @@ public class PurchaseOrderService(
             return await GetAllAsync(parameters, cancellationToken);
         }
 
-        var term = searchTerm.Trim().ToLower();
+        var pattern = $"%{searchTerm.Trim()}%";
         var poRepo = unitOfWork.Repository<PurchaseOrder>();
         var pagedOrders = await poRepo.GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.OrderedAt),
-            x => x.PurchaseOrderNumber.ToLower().Contains(term) ||
-                 (x.Notes != null && x.Notes.ToLower().Contains(term)),
+            x => EF.Functions.ILike(x.PurchaseOrderNumber, pattern) ||
+                 (x.Notes != null && EF.Functions.ILike(x.Notes, pattern)),
             cancellationToken,
             query => query.Include(x => x.Warehouse));
 

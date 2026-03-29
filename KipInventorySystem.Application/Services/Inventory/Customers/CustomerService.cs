@@ -6,6 +6,7 @@ using KipInventorySystem.Shared.Interfaces;
 using KipInventorySystem.Shared.Models;
 using KipInventorySystem.Shared.Responses;
 using MapsterMapper;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace KipInventorySystem.Application.Services.Inventory.Customers;
@@ -180,13 +181,13 @@ public class CustomerService(
             return await GetAllAsync(parameters, cancellationToken);
         }
 
-        var term = searchTerm.Trim().ToLower();
+        var pattern = $"%{searchTerm.Trim()}%";
         var customers = await unitOfWork.Repository<Customer>().GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.CreatedAt),
-            x => x.Name.ToLower().Contains(term) ||
-                 (x.Email != null && x.Email.ToLower().Contains(term)) ||
-                 (x.Phone != null && x.Phone.ToLower().Contains(term)),
+            x => EF.Functions.ILike(x.Name, pattern) ||
+                 (x.Email != null && EF.Functions.ILike(x.Email, pattern)) ||
+                 (x.Phone != null && EF.Functions.ILike(x.Phone, pattern)),
             cancellationToken);
 
         var response = new PaginationResult<CustomerDto>

@@ -8,6 +8,27 @@ public interface IEmailBackgroundJobs
     Task SendPasswordResetEmailAsync(string toEmail, string firstName, string resetLink, int expirationHours, CancellationToken cancellationToken = default);
     Task SendPasswordChangedEmailAsync(string toEmail, string firstName, string ipAddress, string userAgent, CancellationToken cancellationToken = default);
     Task SendPasswordResetSuccessEmailAsync(string toEmail, string firstName, string ipAddress, string userAgent, CancellationToken cancellationToken = default);
+    Task SendLowStockAlertEmailAsync(
+        string toEmail,
+        string recipientName,
+        string warehouseName,
+        string warehouseCode,
+        string productName,
+        string sku,
+        int availableQuantity,
+        int threshold,
+        int reorderQuantity,
+        CancellationToken cancellationToken = default);
+    Task SendManualProcurementReviewEmailAsync(
+        string toEmail,
+        string recipientName,
+        string warehouseName,
+        string warehouseCode,
+        string productName,
+        string sku,
+        int availableQuantity,
+        int threshold,
+        CancellationToken cancellationToken = default);
     Task SendPurchaseOrderApprovedEmailAsync(
         string toEmail,
         string supplierName,
@@ -97,6 +118,82 @@ public class EmailBackgroundJobs(IEmailService emailService, ILogger<EmailBackgr
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to send password reset success email to {Email}", toEmail);
+            throw;
+        }
+    }
+
+    public async Task SendLowStockAlertEmailAsync(
+        string toEmail,
+        string recipientName,
+        string warehouseName,
+        string warehouseCode,
+        string productName,
+        string sku,
+        int availableQuantity,
+        int threshold,
+        int reorderQuantity,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var emailHtml = EmailTemplates.LowStockAlertEmail(
+                recipientName,
+                warehouseName,
+                warehouseCode,
+                productName,
+                sku,
+                availableQuantity,
+                threshold,
+                reorderQuantity);
+
+            await emailService.SendHtmlEmailAsync(
+                toEmail,
+                $"Low Stock Alert: {productName} ({sku})",
+                emailHtml,
+                cancellationToken);
+
+            logger.LogInformation("Low stock alert email sent to {Email}", toEmail);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send low stock alert email to {Email}", toEmail);
+            throw;
+        }
+    }
+
+    public async Task SendManualProcurementReviewEmailAsync(
+        string toEmail,
+        string recipientName,
+        string warehouseName,
+        string warehouseCode,
+        string productName,
+        string sku,
+        int availableQuantity,
+        int threshold,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var emailHtml = EmailTemplates.ManualProcurementReviewEmail(
+                recipientName,
+                warehouseName,
+                warehouseCode,
+                productName,
+                sku,
+                availableQuantity,
+                threshold);
+
+            await emailService.SendHtmlEmailAsync(
+                toEmail,
+                $"Manual Procurement Review Needed: {productName} ({sku})",
+                emailHtml,
+                cancellationToken);
+
+            logger.LogInformation("Manual procurement review email sent to {Email}", toEmail);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send manual procurement review email to {Email}", toEmail);
             throw;
         }
     }

@@ -178,6 +178,108 @@ public static class EmailTemplates
 </html>";
     }
 
+    public static string LowStockAlertEmail(
+        string recipientName,
+        string warehouseName,
+        string warehouseCode,
+        string productName,
+        string sku,
+        int availableQuantity,
+        int threshold,
+        int reorderQuantity)
+    {
+        return $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #B45309; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .info-box {{ background-color: #FEF3C7; border-left: 4px solid #B45309; padding: 15px; margin: 20px 0; }}
+        .footer {{ text-align: center; margin-top: 30px; color: #6B7280; font-size: 14px; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>Low Stock Alert</h1>
+        </div>
+        <div class='content'>
+            <h2>Hello {recipientName},</h2>
+            <p>A product has reached its low-stock threshold and may need replenishment.</p>
+            <div class='info-box'>
+                <strong>Warehouse:</strong> {warehouseName} ({warehouseCode})<br>
+                <strong>Product:</strong> {productName}<br>
+                <strong>SKU:</strong> {sku}<br>
+                <strong>Available Quantity:</strong> {availableQuantity}<br>
+                <strong>Threshold:</strong> {threshold}<br>
+                <strong>Suggested Reorder Quantity:</strong> {reorderQuantity}
+            </div>
+            <p>Please review current stock levels and the generated procurement work for this item.</p>
+            <p>Best regards,<br>The Inventory Team</p>
+        </div>
+        <div class='footer'>
+            <p>&copy; {DateTime.UtcNow.Year} All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>";
+    }
+
+    public static string ManualProcurementReviewEmail(
+        string recipientName,
+        string warehouseName,
+        string warehouseCode,
+        string productName,
+        string sku,
+        int availableQuantity,
+        int threshold)
+    {
+        return $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #991B1B; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .info-box {{ background-color: #FEE2E2; border-left: 4px solid #DC2626; padding: 15px; margin: 20px 0; }}
+        .footer {{ text-align: center; margin-top: 30px; color: #6B7280; font-size: 14px; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>Manual Procurement Review Needed</h1>
+        </div>
+        <div class='content'>
+            <h2>Hello {recipientName},</h2>
+            <p>A low-stock product could not be prepared for auto-reorder because it does not have a default supplier configured.</p>
+            <div class='info-box'>
+                <strong>Warehouse:</strong> {warehouseName} ({warehouseCode})<br>
+                <strong>Product:</strong> {productName}<br>
+                <strong>SKU:</strong> {sku}<br>
+                <strong>Available Quantity:</strong> {availableQuantity}<br>
+                <strong>Threshold:</strong> {threshold}
+            </div>
+            <p>Please assign a supplier or create a purchase order manually.</p>
+            <p>Best regards,<br>The Inventory Team</p>
+        </div>
+        <div class='footer'>
+            <p>&copy; {DateTime.UtcNow.Year} All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>";
+    }
+
     public static string PurchaseOrderApprovedEmail(
         string supplierName,
         string purchaseOrderNumber,
