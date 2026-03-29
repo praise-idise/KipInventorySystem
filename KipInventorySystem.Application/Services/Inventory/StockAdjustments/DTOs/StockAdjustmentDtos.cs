@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json.Serialization;
 using KipInventorySystem.Domain.Enums;
 
 namespace KipInventorySystem.Application.Services.Inventory.StockAdjustments.DTOs;
@@ -49,5 +50,6 @@ public class StockAdjustmentDto
     public DateTime RequestedAt { get; set; }
     public DateTime? AppliedAt { get; set; }
     public string? Notes { get; set; }
-    public List<StockAdjustmentLineDto> Lines { get; set; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<StockAdjustmentLineDto>? Lines { get; set; } = [];
 }

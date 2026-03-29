@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Reflection;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -116,6 +117,13 @@ public static class WebApplicationBuilderExtensions
                 Description = "API for your application"
             });
             options.OperationFilter<RequiresIdempotencyKeyOperationFilter>();
+
+            var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+            if (File.Exists(xmlPath))
+            {
+                options.IncludeXmlComments(xmlPath);
+            }
 
             options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {

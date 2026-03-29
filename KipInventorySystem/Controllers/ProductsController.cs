@@ -11,6 +11,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;
 
+/// <summary>
+/// Manage products and the supplier links attached to them.
+/// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class ProductsController(

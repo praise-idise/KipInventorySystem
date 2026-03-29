@@ -7,5 +7,6 @@ public enum StockMovementType : int
     AdjustmentIncrease,
     AdjustmentDecrease,
     TransferIn,
-    TransferOut
+    TransferOut,
+    OpeningBalance
 }

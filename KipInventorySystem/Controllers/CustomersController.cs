@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;
 
+/// <summary>
+/// Manage customer records used by inventory and sales workflows.
+/// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class CustomersController(ICustomerService customerService) : BaseController

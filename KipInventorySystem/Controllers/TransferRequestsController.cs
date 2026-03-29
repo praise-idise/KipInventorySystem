@@ -10,6 +10,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;
 
+/// <summary>
+/// Manage stock transfer requests between warehouses and their workflow.
+/// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class TransferRequestsController(ITransferRequestService transferRequestService) : BaseController

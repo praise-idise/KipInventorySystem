@@ -116,6 +116,53 @@ internal class BaseRepository<T>(ApplicationDbContext context) : IBaseRepository
         };
     }
 
+    public async Task<PaginationResult<TResult>> GetPagedProjectionAsync<TResult>(
+        RequestParameters parameters,
+        Func<IQueryable<T>, IOrderedQueryable<T>> orderBy,
+        Expression<Func<T, TResult>> selector,
+        Expression<Func<T, bool>>? predicate = null,
+        CancellationToken cancellationToken = default)
+    {
+        int page = Math.Max(1, parameters.PageNumber);
+        int size = Math.Clamp(parameters.PageSize, 1, 100);
+
+        IQueryable<T> query = _context.Set<T>();
+
+        if (predicate is not null)
+        {
+            query = query.Where(predicate);
+        }
+
+        int totalRecords = await query.CountAsync(cancellationToken);
+
+        if (totalRecords == 0)
+        {
+            return new PaginationResult<TResult>
+            {
+                Records = [],
+                TotalRecords = 0,
+                PageSize = size,
+                CurrentPage = page
+            };
+        }
+
+        var orderedQuery = orderBy(query);
+
+        var pagedData = await orderedQuery
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(selector)
+            .ToListAsync(cancellationToken);
+
+        return new PaginationResult<TResult>
+        {
+            Records = pagedData,
+            TotalRecords = totalRecords,
+            PageSize = size,
+            CurrentPage = page
+        };
+    }
+
     public async Task<List<T>> WhereAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default) =>
         await _dbSet.Where(predicate).ToListAsync(cancellationToken);
 

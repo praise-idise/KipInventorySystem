@@ -6,5 +6,6 @@ public enum StockMovementReferenceType : int
     SalesOrder,
     TransferRequest,
     StockAdjustment,
-    StockIssue
+    StockIssue,
+    OpeningBalance
 }

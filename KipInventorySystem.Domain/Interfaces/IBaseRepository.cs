@@ -28,6 +28,13 @@ public interface IBaseRepository<T> where T : class
         CancellationToken cancellationToken = default,
         Func<IQueryable<T>, IQueryable<T>>? include = null);
 
+    Task<PaginationResult<TResult>> GetPagedProjectionAsync<TResult>(
+        RequestParameters parameters,
+        Func<IQueryable<T>, IOrderedQueryable<T>> orderBy,
+        Expression<Func<T, TResult>> selector,
+        Expression<Func<T, bool>>? predicate = null,
+        CancellationToken cancellationToken = default);
+
     Task<List<T>> GetPagedListAsync(int skip, int take, CancellationToken cancellationToken = default);
 
     Task<List<T>> GetAllIncludingDeletedAsync(CancellationToken cancellationToken = default);

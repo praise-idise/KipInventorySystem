@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;
 
+/// <summary>
+/// Manage sales order drafts, confirmation, fulfillment, and cancellation.
+/// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class SalesOrdersController(ISalesOrderService salesOrderService) : BaseController

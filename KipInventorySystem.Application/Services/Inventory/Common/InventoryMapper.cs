@@ -8,6 +8,7 @@ using KipInventorySystem.Application.Services.Inventory.StockAdjustments.DTOs;
 using KipInventorySystem.Application.Services.Inventory.Suppliers.DTOs;
 using KipInventorySystem.Application.Services.Inventory.TransferRequests.DTOs;
 using KipInventorySystem.Application.Services.Inventory.Warehouses.DTOs;
+using KipInventorySystem.Application.Services.Inventory.OpeningBalances.DTOs;
 using KipInventorySystem.Domain.Entities;
 using Mapster;
 
@@ -84,7 +85,16 @@ public class InventoryMapper : IRegister
         config.NewConfig<StockAdjustmentLine, StockAdjustmentLineDto>();
         config.NewConfig<StockAdjustment, StockAdjustmentDto>();
         config.NewConfig<CreateStockAdjustmentDraftRequest, StockAdjustment>()
-            .Map(dest => dest.Notes, src => Normalize(src.Notes));
+            .Map(dest => dest.Notes, src => Normalize(src.Notes))
+            .Ignore(dest => dest.Lines);
+        #endregion
+
+        #region OPENING BALANCE MAPPINGS
+        config.NewConfig<OpeningBalanceLine, OpeningBalanceLineDto>();
+        config.NewConfig<OpeningBalance, OpeningBalanceDto>();
+        config.NewConfig<CreateOpeningBalanceRequest, OpeningBalance>()
+            .Map(dest => dest.Notes, src => Normalize(src.Notes))
+            .Ignore(dest => dest.Lines);
         #endregion
 
         #region APPROVAL MAPPINGS

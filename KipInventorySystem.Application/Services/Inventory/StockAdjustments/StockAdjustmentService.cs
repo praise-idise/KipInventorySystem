@@ -27,7 +27,7 @@ public class StockAdjustmentService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<CreateStockAdjustmentDraftRequest, StockAdjustmentDto>(
+        return idempotencyService.ExecuteAsync(
             "stock-adjustment-create",
             idempotencyKey,
             request,
@@ -43,6 +43,7 @@ public class StockAdjustmentService(
                     return ServiceResponse<StockAdjustmentDto>.BadRequest("Warehouse was not found.");
                 }
 
+                // Each product should appear once so every line has a single final target quantity.
                 if (request.Lines.GroupBy(x => x.ProductId).Any(x => x.Count() > 1))
                 {
                     return ServiceResponse<StockAdjustmentDto>.BadRequest("Duplicate products are not allowed in stock adjustment lines.");
@@ -66,6 +67,7 @@ public class StockAdjustmentService(
 
                 var adjustmentRepo = unitOfWork.Repository<StockAdjustment>();
                 var lineRepo = unitOfWork.Repository<StockAdjustmentLine>();
+                // Save the header first so the generated id can be assigned to each line.
                 await adjustmentRepo.AddAsync(adjustment, token);
 
                 var lines = new List<StockAdjustmentLine>();
@@ -75,13 +77,22 @@ public class StockAdjustmentService(
                         x => x.WarehouseId == request.WarehouseId && x.ProductId == lineRequest.ProductId,
                         token);
 
-                    var quantityBefore = inventory?.QuantityOnHand ?? 0;
+                    if (inventory is null)
+                    {
+                        return ServiceResponse<StockAdjustmentDto>.Conflict(
+                            $"No inventory record exists for product '{lineRequest.ProductId}' in warehouse '{request.WarehouseId}'. Use opening balance or goods receipt instead.");
+                    }
+
+                    // Capture the draft-time quantity so apply can detect later stock drift.
+                    var quantityBefore = inventory.QuantityOnHand;
+                    // A provided unit cost must be a real inbound valuation, never zero or negative.
                     if (lineRequest.UnitCost.HasValue && lineRequest.UnitCost.Value <= 0)
                     {
                         return ServiceResponse<StockAdjustmentDto>.BadRequest(
                             $"Unit cost must be greater than zero for product '{lineRequest.ProductId}'.");
                     }
 
+                    // Manual unit cost only makes sense when this adjustment adds stock.
                     if (lineRequest.UnitCost.HasValue && lineRequest.QuantityAfter <= quantityBefore)
                     {
                         return ServiceResponse<StockAdjustmentDto>.BadRequest(
@@ -121,7 +132,7 @@ public class StockAdjustmentService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<Guid, StockAdjustmentDto>(
+        return idempotencyService.ExecuteAsync(
             "stock-adjustment-submit",
             idempotencyKey,
             stockAdjustmentId,
@@ -144,6 +155,7 @@ public class StockAdjustmentService(
                     return ServiceResponse<StockAdjustmentDto>.BadRequest("Stock adjustment has no lines.");
                 }
 
+                // Treat a repeated submit as success so callers can safely retry.
                 if (adjustment.Status == StockAdjustmentStatus.PendingApproval)
                 {
                     adjustment.Lines = lines;
@@ -171,6 +183,7 @@ public class StockAdjustmentService(
                     return ServiceResponse<StockAdjustmentDto>.Conflict("This stock adjustment already has a pending approval request.");
                 }
 
+                // Create a new approval record for the current submission cycle.
                 adjustment.Status = StockAdjustmentStatus.PendingApproval;
                 adjustment.UpdatedAt = DateTime.UtcNow;
                 adjustmentRepo.Update(adjustment);
@@ -207,7 +220,7 @@ public class StockAdjustmentService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<Guid, StockAdjustmentDto>(
+        return idempotencyService.ExecuteAsync(
             "stock-adjustment-approve",
             idempotencyKey,
             stockAdjustmentId,
@@ -245,6 +258,7 @@ public class StockAdjustmentService(
                     return ServiceResponse<StockAdjustmentDto>.Conflict("No pending approval request was found for this stock adjustment.");
                 }
 
+                // Keep the document status and approval decision in sync.
                 adjustment.Status = StockAdjustmentStatus.Approved;
                 adjustment.UpdatedAt = DateTime.UtcNow;
                 adjustmentRepo.Update(adjustment);
@@ -278,7 +292,7 @@ public class StockAdjustmentService(
         var affectedProducts = new HashSet<Guid>();
         Guid? affectedWarehouse = null;
 
-        var response = await idempotencyService.ExecuteAsync<Guid, StockAdjustmentDto>(
+        var response = await idempotencyService.ExecuteAsync(
             "stock-adjustment-apply",
             idempotencyKey,
             stockAdjustmentId,
@@ -319,17 +333,27 @@ public class StockAdjustmentService(
                 }
 
                 var movements = new List<StockMovement>();
+                // Confirm live stock still matches the draft snapshot before applying any changes.
                 foreach (var line in lines)
                 {
                     var inventory = await inventoryRepo.FindAsync(
                         x => x.WarehouseId == adjustment.WarehouseId && x.ProductId == line.ProductId,
                         token);
 
-                    var currentQuantity = inventory?.QuantityOnHand ?? 0;
+                    if (inventory is null)
+                    {
+                        return ServiceResponse<StockAdjustmentDto>.Conflict(
+                            $"Inventory record for product '{line.ProductId}' no longer exists in warehouse '{adjustment.WarehouseId}'.");
+                    }
+
+                    var currentQuantity = inventory.QuantityOnHand;
+
                     if (currentQuantity != line.QuantityBefore)
                     {
                         return ServiceResponse<StockAdjustmentDto>.Conflict(
-                            $"Stock changed for product '{line.ProductId}' since draft creation. Expected {line.QuantityBefore}, current {currentQuantity}.");
+                            $"Stock for product '{line.ProductId}' changed since this adjustment was drafted. " +
+                            $"Drafted at {line.QuantityBefore} units, currently {currentQuantity} units. " +
+                            $"Please cancel and re-draft to reflect current stock levels.");
                     }
                 }
 
@@ -341,27 +365,19 @@ public class StockAdjustmentService(
 
                     if (inventory is null)
                     {
-                        inventory = new WarehouseInventory
-                        {
-                            WarehouseId = adjustment.WarehouseId,
-                            ProductId = line.ProductId,
-                            QuantityOnHand = 0,
-                            ReservedQuantity = 0,
-                            AverageUnitCost = 0m,
-                            InventoryValue = 0m,
-                            CreatedAt = DateTime.UtcNow,
-                            UpdatedAt = DateTime.UtcNow
-                        };
-                        await inventoryRepo.AddAsync(inventory, token);
+                        return ServiceResponse<StockAdjustmentDto>.Conflict(
+                            $"Inventory record for product '{line.ProductId}' no longer exists in warehouse '{adjustment.WarehouseId}'.");
                     }
 
                     var delta = line.QuantityAfter - line.QuantityBefore;
+                    // Re-validate persisted draft data before mutating inventory balances and value.
                     if (line.UnitCost.HasValue && line.UnitCost.Value <= 0)
                     {
                         return ServiceResponse<StockAdjustmentDto>.Conflict(
                             $"Unit cost must be greater than zero for product '{line.ProductId}'.");
                     }
 
+                    // Downward adjustments use the existing inventory cost, not a new inbound unit cost.
                     if (line.UnitCost.HasValue && delta <= 0)
                     {
                         return ServiceResponse<StockAdjustmentDto>.Conflict(
@@ -430,6 +446,7 @@ public class StockAdjustmentService(
                         });
                     }
 
+                    // The costing helpers should leave on-hand quantity exactly at the requested final count.
                     if (inventory.QuantityOnHand != line.QuantityAfter)
                     {
                         return ServiceResponse<StockAdjustmentDto>.Conflict(
@@ -469,6 +486,7 @@ public class StockAdjustmentService(
 
         if (response.Succeeded && affectedWarehouse.HasValue)
         {
+            // Re-evaluate alerts after stock levels change without blocking the main request.
             foreach (var productId in affectedProducts)
             {
                 BackgroundJob.Enqueue<ILowStockBackgroundJobs>(
@@ -486,12 +504,13 @@ public class StockAdjustmentService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<Guid, StockAdjustmentDto>(
+        return idempotencyService.ExecuteAsync(
             "stock-adjustment-return",
             idempotencyKey,
             stockAdjustmentId,
             token => transactionRunner.ExecuteSerializableAsync("stockAdjustment.returnForChanges", async _ =>
             {
+                // Require actionable feedback so the requester knows what to fix before resubmitting.
                 if (string.IsNullOrWhiteSpace(request.Comment))
                 {
                     return ServiceResponse<StockAdjustmentDto>.BadRequest("A comment is required when returning a stock adjustment for changes.");
@@ -553,7 +572,7 @@ public class StockAdjustmentService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<Guid, StockAdjustmentDto>(
+        return idempotencyService.ExecuteAsync(
             "stock-adjustment-cancel",
             idempotencyKey,
             stockAdjustmentId,
@@ -584,6 +603,7 @@ public class StockAdjustmentService(
                     return ServiceResponse<StockAdjustmentDto>.Conflict("Applied stock adjustments cannot be cancelled.");
                 }
 
+                // Cancel any still-pending approval alongside the document.
                 var pendingApproval = await GetPendingApprovalAsync(approvalRepo, ApprovalDocumentType.StockAdjustment, adjustment.StockAdjustmentId, token);
                 if (pendingApproval is not null)
                 {
@@ -633,30 +653,14 @@ public class StockAdjustmentService(
         CancellationToken cancellationToken = default)
     {
         var adjustmentRepo = unitOfWork.Repository<StockAdjustment>();
-        var lineRepo = unitOfWork.Repository<StockAdjustmentLine>();
         var pagedAdjustments = await adjustmentRepo.GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.RequestedAt),
             cancellationToken: cancellationToken);
 
-        var adjustments = pagedAdjustments.Records.ToList();
-        if (adjustments.Count > 0)
-        {
-            var ids = adjustments.Select(x => x.StockAdjustmentId).ToHashSet();
-            var lines = await lineRepo.WhereAsync(x => ids.Contains(x.StockAdjustmentId), cancellationToken);
-            var grouped = lines.GroupBy(x => x.StockAdjustmentId).ToDictionary(x => x.Key, x => x.ToList());
-            foreach (var adjustment in adjustments)
-            {
-                if (grouped.TryGetValue(adjustment.StockAdjustmentId, out var adjustmentLines))
-                {
-                    adjustment.Lines = adjustmentLines;
-                }
-            }
-        }
-
         var response = new PaginationResult<StockAdjustmentDto>
         {
-            Records = adjustments.Select(x => mapper.Map<StockAdjustmentDto>(x)).ToList(),
+            Records = pagedAdjustments.Records.Select(MapSummaryAdjustment).ToList(),
             TotalRecords = pagedAdjustments.TotalRecords,
             PageSize = pagedAdjustments.PageSize,
             CurrentPage = pagedAdjustments.CurrentPage
@@ -677,7 +681,6 @@ public class StockAdjustmentService(
 
         var term = searchTerm.Trim().ToLower();
         var adjustmentRepo = unitOfWork.Repository<StockAdjustment>();
-        var lineRepo = unitOfWork.Repository<StockAdjustmentLine>();
         var pagedAdjustments = await adjustmentRepo.GetPagedItemsAsync(
             parameters,
             query => query.OrderByDescending(x => x.RequestedAt),
@@ -685,24 +688,9 @@ public class StockAdjustmentService(
                  (x.Notes != null && x.Notes.ToLower().Contains(term)),
             cancellationToken);
 
-        var adjustments = pagedAdjustments.Records.ToList();
-        if (adjustments.Count > 0)
-        {
-            var ids = adjustments.Select(x => x.StockAdjustmentId).ToHashSet();
-            var lines = await lineRepo.WhereAsync(x => ids.Contains(x.StockAdjustmentId), cancellationToken);
-            var grouped = lines.GroupBy(x => x.StockAdjustmentId).ToDictionary(x => x.Key, x => x.ToList());
-            foreach (var adjustment in adjustments)
-            {
-                if (grouped.TryGetValue(adjustment.StockAdjustmentId, out var adjustmentLines))
-                {
-                    adjustment.Lines = adjustmentLines;
-                }
-            }
-        }
-
         var response = new PaginationResult<StockAdjustmentDto>
         {
-            Records = adjustments.Select(x => mapper.Map<StockAdjustmentDto>(x)).ToList(),
+            Records = pagedAdjustments.Records.Select(MapSummaryAdjustment).ToList(),
             TotalRecords = pagedAdjustments.TotalRecords,
             PageSize = pagedAdjustments.PageSize,
             CurrentPage = pagedAdjustments.CurrentPage
@@ -714,6 +702,7 @@ public class StockAdjustmentService(
     private async Task<string> GenerateUniqueAdjustmentNumberAsync(CancellationToken cancellationToken)
     {
         var repo = unitOfWork.Repository<StockAdjustment>();
+        // Retry a few times in case the generator produces an existing number.
         for (var i = 0; i < 5; i++)
         {
             var number = documentNumberGenerator.GenerateAdjustmentNumber();
@@ -739,9 +728,17 @@ public class StockAdjustmentService(
                  x.Status == ApprovalDecisionStatus.Pending,
             cancellationToken);
 
+        // Pick the newest pending record when approval history exists for the same document.
         return approvals
             .OrderByDescending(x => x.RequestedAt)
             .FirstOrDefault();
+    }
+
+    private StockAdjustmentDto MapSummaryAdjustment(StockAdjustment adjustment)
+    {
+        var dto = mapper.Map<StockAdjustmentDto>(adjustment);
+        dto.Lines = null;
+        return dto;
     }
 
 }

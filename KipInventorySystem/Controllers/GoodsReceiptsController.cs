@@ -7,6 +7,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;
 
+/// <summary>
+/// Record goods receipt transactions for inbound purchase order deliveries.
+/// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class GoodsReceiptsController(IGoodsReceiptService goodsReceiptService) : BaseController

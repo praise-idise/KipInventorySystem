@@ -8,6 +8,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;
 
+/// <summary>
+/// View pending approval work and approval history for inventory documents.
+/// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class ApprovalsController(IApprovalRequestService approvalRequestService) : BaseController

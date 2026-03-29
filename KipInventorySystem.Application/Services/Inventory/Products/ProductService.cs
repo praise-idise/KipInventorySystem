@@ -1,5 +1,6 @@
 using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Application.Services.Inventory.Products.DTOs;
+using KipInventorySystem.Application.Services.Inventory.ProductSuppliers.DTOs;
 using KipInventorySystem.Domain.Entities;
 using KipInventorySystem.Domain.Interfaces;
 using KipInventorySystem.Shared.Interfaces;
@@ -223,15 +224,15 @@ public partial class ProductService(
         RequestParameters parameters,
         CancellationToken cancellationToken = default)
     {
-        var products = await unitOfWork.Repository<Product>().GetPagedItemsAsync(
+        var products = await unitOfWork.Repository<Product>().GetPagedProjectionAsync(
             parameters,
             query => query.OrderByDescending(x => x.CreatedAt),
-            cancellationToken: cancellationToken,
-            include: query => query.Include(x => x.VariantAttributes));
+            BuildSummaryProjection(),
+            cancellationToken: cancellationToken);
 
         var response = new PaginationResult<ProductDTO>
         {
-            Records = [.. products.Records.Select(MapSummaryProduct)],
+            Records = products.Records,
             TotalRecords = products.TotalRecords,
             PageSize = products.PageSize,
             CurrentPage = products.CurrentPage
@@ -251,9 +252,10 @@ public partial class ProductService(
         }
 
         var term = searchTerm.Trim().ToLower();
-        var products = await unitOfWork.Repository<Product>().GetPagedItemsAsync(
+        var products = await unitOfWork.Repository<Product>().GetPagedProjectionAsync(
             parameters,
             query => query.OrderByDescending(x => x.CreatedAt),
+            BuildSummaryProjection(),
             x => x.Name.ToLower().Contains(term) ||
                  x.Sku.ToLower().Contains(term) ||
                  x.ItemCode.ToLower().Contains(term) ||
@@ -263,12 +265,11 @@ public partial class ProductService(
                  x.VariantAttributes.Any(attribute =>
                      attribute.AttributeName.ToLower().Contains(term) ||
                      attribute.AttributeCode.ToLower().Contains(term)),
-            cancellationToken,
-            query => query.Include(x => x.VariantAttributes));
+            cancellationToken);
 
         var response = new PaginationResult<ProductDTO>
         {
-            Records = [.. products.Records.Select(MapSummaryProduct)],
+            Records = products.Records,
             TotalRecords = products.TotalRecords,
             PageSize = products.PageSize,
             CurrentPage = products.CurrentPage
@@ -442,11 +443,41 @@ public partial class ProductService(
         return true;
     }
 
-    private ProductDTO MapSummaryProduct(Product product)
+    private static System.Linq.Expressions.Expression<Func<Product, ProductDTO>> BuildSummaryProjection()
     {
-        var dto = mapper.Map<ProductDTO>(product);
-        dto.Suppliers = null;
-        return dto;
+        return product => new ProductDTO
+        {
+            ProductId = product.ProductId,
+            Sku = product.Sku,
+            CategoryCode = product.CategoryCode,
+            BrandCode = product.BrandCode,
+            ItemCode = product.ItemCode,
+            Name = product.Name,
+            Description = product.Description,
+            UnitOfMeasure = product.UnitOfMeasure,
+            VariantAttributes = product.VariantAttributes
+                .OrderBy(attribute => attribute.SortOrder)
+                .Select(attribute => new ProductVariantAttributeDTO
+                {
+                    AttributeName = attribute.AttributeName,
+                    AttributeCode = attribute.AttributeCode,
+                    SortOrder = attribute.SortOrder
+                })
+                .ToList(),
+            Suppliers = product.ProductSuppliers
+                .OrderByDescending(supplier => supplier.IsDefault)
+                .ThenBy(supplier => supplier.SupplierId)
+                .Select(supplier => new ProductSupplierDTO
+                {
+                    SupplierName = supplier.Supplier.Name,
+                })
+                .ToList(),
+            ReorderThreshold = product.ReorderThreshold,
+            ReorderQuantity = product.ReorderQuantity,
+            IsActive = product.IsActive,
+            CreatedAt = product.CreatedAt,
+            UpdatedAt = product.UpdatedAt
+        };
     }
 
     private static string NormalizeCodeSegment(string value, int maxLength, bool padToLength = false)

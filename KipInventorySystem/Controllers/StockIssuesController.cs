@@ -7,6 +7,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;
 
+/// <summary>
+/// Record direct stock issue transactions from warehouse inventory.
+/// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class StockIssuesController(IStockIssueService stockIssueService) : BaseController

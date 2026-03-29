@@ -5,6 +5,7 @@ public class DocumentNumberGenerator : IDocumentNumberGenerator
     public string GeneratePurchaseOrderNumber() => Generate("PO");
     public string GenerateTransferNumber() => Generate("TR");
     public string GenerateAdjustmentNumber() => Generate("ADJ");
+    public string GenerateOpeningBalanceNumber() => Generate("OB");
     public string GenerateSalesOrderNumber() => Generate("SO");
 
     private static string Generate(string prefix)

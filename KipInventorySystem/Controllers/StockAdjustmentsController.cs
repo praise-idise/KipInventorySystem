@@ -10,6 +10,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;
 
+/// <summary>
+/// Manage stock adjustment drafts and their approval and apply workflow.
+/// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentService) : BaseController

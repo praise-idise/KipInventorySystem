@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;
 
+/// <summary>
+/// Manage supplier records used for procurement and product sourcing.
+/// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class SuppliersController(IInventorySupplierService supplierService) : BaseController

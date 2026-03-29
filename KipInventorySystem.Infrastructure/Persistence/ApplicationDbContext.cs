@@ -22,6 +22,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<TransferRequestLine> TransferRequestLines => Set<TransferRequestLine>();
     public DbSet<StockAdjustment> StockAdjustments => Set<StockAdjustment>();
     public DbSet<StockAdjustmentLine> StockAdjustmentLines => Set<StockAdjustmentLine>();
+    public DbSet<OpeningBalance> OpeningBalances => Set<OpeningBalance>();
+    public DbSet<OpeningBalanceLine> OpeningBalanceLines => Set<OpeningBalanceLine>();
     public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
@@ -154,6 +156,22 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         modelBuilder.Entity<StockAdjustmentLine>()
             .Property(e => e.UnitCost)
+            .HasPrecision(18, 4);
+
+        modelBuilder.Entity<OpeningBalance>()
+            .HasIndex(e => e.OpeningBalanceNumber)
+            .IsUnique();
+
+        modelBuilder.Entity<OpeningBalanceLine>()
+            .HasIndex(e => new { e.OpeningBalanceId, e.ProductId })
+            .IsUnique();
+
+        modelBuilder.Entity<OpeningBalanceLine>()
+            .Property(e => e.UnitCost)
+            .HasPrecision(18, 4);
+
+        modelBuilder.Entity<OpeningBalanceLine>()
+            .Property(e => e.TotalCost)
             .HasPrecision(18, 4);
 
         modelBuilder.Entity<TransferRequest>()

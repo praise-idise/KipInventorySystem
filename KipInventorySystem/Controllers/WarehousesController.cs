@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;
 
+/// <summary>
+/// Manage warehouse master data and warehouse lookup endpoints.
+/// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class WarehousesController(IWarehouseService warehouseService) : BaseController

@@ -10,6 +10,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;
 
+/// <summary>
+/// Manage purchase order drafts and their approval workflow.
+/// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
 public class PurchaseOrdersController(IPurchaseOrderService purchaseOrderService) : BaseController
