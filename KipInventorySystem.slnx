@@ -4,6 +4,7 @@
     <File Path="Directory.Packages.props" />
   </Folder>
   <Project Path="KipInventorySystem.Application/KipInventorySystem.Application.csproj" />
+  <Project Path="KipInventorySystem.Application.Tests/KipInventorySystem.Application.Tests.csproj" />
   <Project Path="KipInventorySystem.Domain/KipInventorySystem.Domain.csproj" />
   <Project Path="KipInventorySystem.Infrastructure/KipInventorySystem.Infrastructure.csproj" />
   <Project Path="KipInventorySystem.Shared/KipInventorySystem.Shared.csproj" />
