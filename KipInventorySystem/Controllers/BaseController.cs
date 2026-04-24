@@ -8,6 +8,12 @@ namespace KipInventorySystem.API.Controllers;
 [ApiController]
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
+[ProducesResponseType(typeof(ApiResponse<object>), 400)]
+[ProducesResponseType(typeof(ApiResponse<object>), 403)]
+[ProducesResponseType(typeof(ApiResponse<object>), 404)]
+[ProducesResponseType(typeof(ApiResponse<object>), 409)]
+[ProducesResponseType(typeof(ApiResponse<object>), 500)]
+[ProducesResponseType(typeof(ApiResponse<object>), 503)]
 public abstract class BaseController : ControllerBase
 {
     protected IActionResult ComputeResponse<T>(ServiceResponse<T> serviceResponse)
@@ -24,14 +30,36 @@ public abstract class BaseController : ControllerBase
 
     protected IActionResult ComputeResponse(ServiceResponse serviceResponse)
     {
-        var result = new
-        {
-            Success = serviceResponse.Succeeded,
-            StatusCode = (int)serviceResponse.StatusCode,
-            Message = serviceResponse.Message
-        };
+
+        ApiResponse<object> result = new(
+        serviceResponse.Succeeded,
+        (int)serviceResponse.StatusCode,
+        serviceResponse.Message,
+        null
+    );
 
         return StatusCode((int)serviceResponse.StatusCode, result);
+    }
+
+    protected IActionResult ComputePagedResponse<TItem>(ServiceResponse<PaginationResult<TItem>> serviceResponse)
+    {
+        PaginationMeta? pagination = null;
+
+        if (serviceResponse.Succeeded && serviceResponse.Data is not null)
+        {
+            var d = serviceResponse.Data;
+            pagination = new PaginationMeta(d.CurrentPage, d.PageSize, d.TotalRecords, d.TotalPages);
+        }
+
+        var result = new ApiResponse<IReadOnlyList<TItem>>(
+            serviceResponse.Succeeded,
+            (int)serviceResponse.StatusCode,
+            serviceResponse.Message,
+            serviceResponse.Data?.Records,
+            pagination
+        );
+
+        return StatusCode(result.StatusCode, result);
     }
 
     protected IActionResult ValidateModelState()

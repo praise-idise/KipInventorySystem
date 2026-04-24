@@ -20,6 +20,7 @@ public class GoodsReceiptsController(IGoodsReceiptService goodsReceiptService) :
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
+    [ProducesResponseType(typeof(ReceiveGoodsRequest), 200)]
     public async Task<IActionResult> Receive([FromBody] ReceiveGoodsRequest request, CancellationToken cancellationToken)
     {
         var validation = ValidateModelState();

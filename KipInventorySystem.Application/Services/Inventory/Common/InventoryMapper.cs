@@ -41,23 +41,20 @@ public class InventoryMapper : IRegister
         #endregion
 
         #region PRODUCT MAPPINGS
-        config.NewConfig<ProductVariantAttribute, ProductVariantAttributeDTO>();
         config.NewConfig<ProductSupplier, ProductSupplierDTO>()
             .Map(dest => dest.SupplierName, src => src.Supplier.Name)
-            .Map(dest => dest.SupplierEmail, src => src.Supplier.Email);
+            .Map(dest => dest.SupplierEmail, src => src.Supplier.Email)
+            .Map(dest => dest.SupplierPhone, src => src.Supplier.Phone)
+            .Map(dest => dest.SupplierLeadTimeDays, src => src.Supplier.LeadTimeDays)
+            .Map(dest => dest.SupplierContactPerson, src => src.Supplier.ContactPerson);
         config.NewConfig<Product, ProductDTO>()
-            .Map(dest => dest.VariantAttributes, src => src.VariantAttributes.OrderBy(x => x.SortOrder))
             .Map(dest => dest.Suppliers, src => src.ProductSuppliers.OrderByDescending(x => x.IsDefault).ThenBy(x => x.SupplierId));
-        config.NewConfig<CreateProductVariantAttributeDTO, ProductVariantAttribute>()
-            .Map(dest => dest.AttributeName, src => src.AttributeName.Trim())
-            .Map(dest => dest.AttributeCode, src => src.AttributeCode.Trim().ToUpperInvariant());
         config.NewConfig<CreateProductDTO, Product>()
             .Map(dest => dest.CategoryCode, src => src.CategoryCode.Trim().ToUpperInvariant())
-            .Map(dest => dest.BrandCode, src => src.BrandCode.Trim().ToUpperInvariant())
+            .Map(dest => dest.Brand, src => src.Brand.Trim())
             .Map(dest => dest.Name, src => src.Name.Trim())
             .Map(dest => dest.Description, src => Normalize(src.Description))
-            .Map(dest => dest.UnitOfMeasure, src => src.UnitOfMeasure.Trim())
-            .Map(dest => dest.VariantAttributes, src => src.VariantAttributes);
+            .Map(dest => dest.UnitOfMeasure, src => src.UnitOfMeasure);
         #endregion
 
         #region PURCHASE ORDER MAPPINGS
@@ -78,7 +75,7 @@ public class InventoryMapper : IRegister
         config.NewConfig<TransferRequest, TransferRequestDto>();
         config.NewConfig<CreateTransferRequestDraftRequest, TransferRequest>()
             .Map(dest => dest.Notes, src => Normalize(src.Notes))
-            .Ignore(dest=>dest.Lines);
+            .Ignore(dest => dest.Lines);
         config.NewConfig<CreateTransferRequestLineRequest, TransferRequestLine>();
         #endregion
 

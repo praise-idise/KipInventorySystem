@@ -16,6 +16,7 @@ namespace KipInventorySystem.API.Controllers;
 /// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
+[Authorize]
 public class ProductsController(
     IProductService productService,
     IProductSupplierService productSupplierService) : BaseController
@@ -24,26 +25,26 @@ public class ProductsController(
     /// List products with pagination.
     /// </summary>
     [HttpGet]
-    [Authorize]
+    [ProducesResponseType(typeof(List<ProductDTO>), 200)]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
-        => ComputeResponse(await productService.GetAllAsync(parameters, cancellationToken));
+        => ComputePagedResponse(await productService.GetAllAsync(parameters, cancellationToken));
 
     /// <summary>
     /// Search products by key fields.
     /// </summary>
     [HttpGet("search")]
-    [Authorize]
+    [ProducesResponseType(typeof(List<ProductDTO>), 200)]
     public async Task<IActionResult> Search(
         [FromQuery] string? searchTerm,
         [FromQuery] RequestParameters parameters,
         CancellationToken cancellationToken)
-        => ComputeResponse(await productService.SearchAsync(searchTerm, parameters, cancellationToken));
+        => ComputePagedResponse(await productService.SearchAsync(searchTerm, parameters, cancellationToken));
 
     /// <summary>
     /// Get a single product by id.
     /// </summary>
     [HttpGet("{productId:guid}")]
-    [Authorize]
+    [ProducesResponseType(typeof(ProductDTO), 200)]
     public async Task<IActionResult> GetById(Guid productId, CancellationToken cancellationToken)
         => ComputeResponse(await productService.GetByIdAsync(productId, cancellationToken));
 
@@ -53,6 +54,7 @@ public class ProductsController(
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN)]
     [RequiresIdempotencyKey]
+    [ProducesResponseType(typeof(ProductDTO), 200)]
     public async Task<IActionResult> Create([FromBody] CreateProductDTO request, CancellationToken cancellationToken)
     {
         var validation = ValidateModelState();
@@ -72,6 +74,8 @@ public class ProductsController(
     /// </summary>
     [HttpPatch("{productId:guid}")]
     [Roles(ROLE_TYPE.ADMIN)]
+    [ProducesResponseType(typeof(ProductDTO), 200)]
+
     public async Task<IActionResult> Update(
         Guid productId,
         [FromBody] UpdateProductDTO request,
@@ -89,6 +93,7 @@ public class ProductsController(
     /// </summary>
     [HttpPost("{productId:guid}/suppliers")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
+    [ProducesResponseType(typeof(ProductSupplierDTO), 200)]
     public async Task<IActionResult> CreateSupplierLink(
         Guid productId,
         [FromBody] CreateProductSupplierRequest request,
@@ -105,6 +110,7 @@ public class ProductsController(
     /// </summary>
     [HttpPatch("{productId:guid}/suppliers/{supplierId:guid}")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
+    [ProducesResponseType(typeof(ProductSupplierDTO), 200)]
     public async Task<IActionResult> UpdateSupplierLink(
         Guid productId,
         Guid supplierId,
@@ -122,6 +128,7 @@ public class ProductsController(
     /// </summary>
     [HttpDelete("{productId:guid}/suppliers/{supplierId:guid}")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.PROCUREMENT_OFFICER)]
+    [ProducesResponseType(typeof(void), 204)]
     public async Task<IActionResult> DeleteSupplierLink(
         Guid productId,
         Guid supplierId,

@@ -1,7 +1,7 @@
 using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Application.Services.Inventory.Products.DTOs;
-using KipInventorySystem.Application.Services.Inventory.ProductSuppliers.DTOs;
 using KipInventorySystem.Domain.Entities;
+using KipInventorySystem.Domain.Enums;
 using KipInventorySystem.Domain.Interfaces;
 using KipInventorySystem.Shared.Interfaces;
 using KipInventorySystem.Shared.Models;
@@ -42,7 +42,7 @@ public partial class ProductService(
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        return idempotencyService.ExecuteAsync<CreateProductDTO, ProductDTO>(
+        return idempotencyService.ExecuteAsync(
             "product-create",
             idempotencyKey,
             request,
@@ -50,13 +50,15 @@ public partial class ProductService(
             {
                 var productRepo = unitOfWork.Repository<Product>();
                 var product = mapper.Map<Product>(request);
+                product.Brand = request.Brand.Trim();
+                product.BrandCode = GenerateBrandCode(request.Brand);
+
                 NormalizeScalarFields(product);
-                product.VariantAttributes = [.. NormalizeVariantAttributes(product.VariantAttributes)];
 
                 if (await ExistsBusinessDuplicateAsync(productRepo, product, token))
                 {
                     return ServiceResponse<ProductDTO>.Conflict(
-                        "A product with the same category, brand, name, unit of measure, and variant attributes already exists.");
+                        "A product with the same category, brand, name, unit of measure, and variant values already exists.");
                 }
 
                 product.Sku = await GenerateNextSkuAsync(productRepo, product, token);
@@ -87,9 +89,7 @@ public partial class ProductService(
         var productRepo = unitOfWork.Repository<Product>();
         var product = await productRepo.GetByIdAsync(
             productId,
-            query => query
-                .Include(x => x.VariantAttributes)
-                .Include(x => x.ProductSuppliers),
+            query => query.Include(x => x.ProductSuppliers),
             cancellationToken);
         if (product is null)
         {
@@ -104,22 +104,10 @@ public partial class ProductService(
             shouldRegenerateSku = true;
         }
 
-        if (request.BrandCode is not null)
+        if (request.Brand is not null)
         {
-            product.BrandCode = request.BrandCode.Trim().ToUpperInvariant();
-            shouldRegenerateSku = true;
-        }
-
-        if (request.VariantAttributes is not null)
-        {
-            product.VariantAttributes.Clear();
-
-            var variantAttributes = mapper.Map<List<ProductVariantAttribute>>(request.VariantAttributes);
-            foreach (var variantAttribute in NormalizeVariantAttributes(variantAttributes))
-            {
-                product.VariantAttributes.Add(variantAttribute);
-            }
-
+            product.Brand = request.Brand.Trim();
+            product.BrandCode = GenerateBrandCode(request.Brand);
             shouldRegenerateSku = true;
         }
 
@@ -136,7 +124,43 @@ public partial class ProductService(
 
         if (request.UnitOfMeasure is not null)
         {
-            product.UnitOfMeasure = request.UnitOfMeasure.Trim();
+            product.UnitOfMeasure = request.UnitOfMeasure.Value;
+            shouldRegenerateSku = true;
+        }
+
+        if (request.Color is not null)
+        {
+            product.Color = request.Color;
+            shouldRegenerateSku = true;
+        }
+
+        if (request.Storage is not null)
+        {
+            product.Storage = request.Storage;
+            shouldRegenerateSku = true;
+        }
+
+        if (request.Size is not null)
+        {
+            product.Size = request.Size;
+            shouldRegenerateSku = true;
+        }
+
+        if (request.Dosage is not null)
+        {
+            product.Dosage = request.Dosage;
+            shouldRegenerateSku = true;
+        }
+
+        if (request.Grade is not null)
+        {
+            product.Grade = request.Grade;
+            shouldRegenerateSku = true;
+        }
+
+        if (request.Finish is not null)
+        {
+            product.Finish = request.Finish;
             shouldRegenerateSku = true;
         }
 
@@ -157,6 +181,13 @@ public partial class ProductService(
 
         NormalizeScalarFields(product);
 
+        if (await ExistsBusinessDuplicateAsync(productRepo, product, cancellationToken, product.ProductId))
+        {
+            return ServiceResponse<ProductDTO>.Conflict(
+                "A product with the same category, brand, name, unit of measure, and variant values already exists.");
+        }
+
+        // If SKU-related fields were updated, we need to check if the new SKU would conflict with existing products and regenerate it if necessary
         if (shouldRegenerateSku)
         {
             product.Sku = await GenerateNextSkuAsync(productRepo, product, cancellationToken, product.ProductId);
@@ -164,7 +195,6 @@ public partial class ProductService(
 
         product.UpdatedAt = DateTime.UtcNow;
 
-        productRepo.Update(product);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
@@ -191,7 +221,6 @@ public partial class ProductService(
         product.IsActive = false;
         product.DeletedAt = DateTime.UtcNow;
         product.UpdatedAt = DateTime.UtcNow;
-        productRepo.Update(product);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
@@ -208,7 +237,6 @@ public partial class ProductService(
         var product = await unitOfWork.Repository<Product>().GetByIdAsync(
             productId,
             query => query
-                .Include(x => x.VariantAttributes)
                 .Include(x => x.ProductSuppliers)
                     .ThenInclude(x => x.Supplier),
             cancellationToken);
@@ -252,6 +280,8 @@ public partial class ProductService(
         }
 
         var pattern = $"%{searchTerm.Trim()}%";
+        var hasUnitOfMeasure = Enum.TryParse<UnitOfMeasure>(searchTerm.Trim(), true, out var parsedUnitOfMeasure);
+        var hasSize = Enum.TryParse<ProductSize>(searchTerm.Trim(), true, out var parsedSize);
         var products = await unitOfWork.Repository<Product>().GetPagedProjectionAsync(
             parameters,
             query => query.OrderByDescending(x => x.CreatedAt),
@@ -259,12 +289,16 @@ public partial class ProductService(
             x => EF.Functions.ILike(x.Name, pattern) ||
                  EF.Functions.ILike(x.Sku, pattern) ||
                  EF.Functions.ILike(x.ItemCode, pattern) ||
+                  EF.Functions.ILike(x.Brand, pattern) ||
                  EF.Functions.ILike(x.BrandCode, pattern) ||
                  EF.Functions.ILike(x.CategoryCode, pattern) ||
-                 EF.Functions.ILike(x.UnitOfMeasure, pattern) ||
-                 x.VariantAttributes.Any(attribute =>
-                     EF.Functions.ILike(attribute.AttributeName, pattern) ||
-                     EF.Functions.ILike(attribute.AttributeCode, pattern)),
+              (hasUnitOfMeasure && x.UnitOfMeasure == parsedUnitOfMeasure) ||
+                 (x.Color != null && EF.Functions.ILike(x.Color, pattern)) ||
+                 (x.Storage != null && EF.Functions.ILike(x.Storage, pattern)) ||
+              (hasSize && x.Size == parsedSize) ||
+                 (x.Dosage != null && EF.Functions.ILike(x.Dosage, pattern)) ||
+                 (x.Grade != null && EF.Functions.ILike(x.Grade, pattern)) ||
+                 (x.Finish != null && EF.Functions.ILike(x.Finish, pattern)),
             cancellationToken);
 
         var response = new PaginationResult<ProductDTO>
@@ -309,36 +343,18 @@ public partial class ProductService(
     {
         var candidates = await productRepo.WhereAsync(
             x => x.CategoryCode == normalizedProduct.CategoryCode &&
-                 x.BrandCode == normalizedProduct.BrandCode &&
+                 x.Brand == normalizedProduct.Brand &&
                  x.Name == normalizedProduct.Name &&
-                 x.UnitOfMeasure == normalizedProduct.UnitOfMeasure,
+                 x.UnitOfMeasure == normalizedProduct.UnitOfMeasure &&
+                 x.Color == normalizedProduct.Color &&
+                 x.Storage == normalizedProduct.Storage &&
+                 x.Size == normalizedProduct.Size &&
+                 x.Dosage == normalizedProduct.Dosage &&
+                 x.Grade == normalizedProduct.Grade &&
+                 x.Finish == normalizedProduct.Finish,
             cancellationToken);
 
-        foreach (var candidate in candidates)
-        {
-            if (productIdToIgnore.HasValue && candidate.ProductId == productIdToIgnore.Value)
-            {
-                continue;
-            }
-
-            var existing = await productRepo.GetByIdAsync(
-                candidate.ProductId,
-                query => query.Include(x => x.VariantAttributes),
-                cancellationToken);
-
-            if (existing is null)
-            {
-                continue;
-            }
-
-            var normalizedExistingAttributes = NormalizeVariantAttributes(existing.VariantAttributes);
-            if (VariantAttributesMatch(normalizedProduct.VariantAttributes, normalizedExistingAttributes))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return candidates.Any(candidate => !productIdToIgnore.HasValue || candidate.ProductId != productIdToIgnore.Value);
     }
 
     private static int? ParseSkuSequence(string sku, string baseSku)
@@ -366,11 +382,17 @@ public partial class ProductService(
             NormalizeCodeSegment(product.ItemCode, 20)
         };
 
-        var variantSegments = product.VariantAttributes
-            .OrderBy(x => x.SortOrder)
-            .ThenBy(x => x.AttributeName)
-            .Select(x => NormalizeCodeSegment(x.AttributeCode, 30))
-            .Where(x => !string.IsNullOrWhiteSpace(x))
+        var variantSegments = new[]
+        {
+            product.Color,
+            product.Storage,
+            product.Size?.ToString(),
+            product.Dosage,
+            product.Grade,
+            product.Finish
+        }
+            .Select(value => NormalizeCodeSegment(value ?? string.Empty, 30))
+            .Where(value => !string.Equals(value, "STD", StringComparison.Ordinal))
             .ToList();
 
         if (variantSegments.Count == 0)
@@ -382,62 +404,23 @@ public partial class ProductService(
             segments.AddRange(variantSegments);
         }
 
-        segments.Add(NormalizeCodeSegment(product.UnitOfMeasure, 10));
+        segments.Add(NormalizeCodeSegment(product.UnitOfMeasure.ToString(), 10));
         return string.Join("-", segments);
     }
 
     private static void NormalizeScalarFields(Product product)
     {
         product.CategoryCode = NormalizeCodeSegment(product.CategoryCode, 3, padToLength: true);
+        product.Brand = product.Brand.Trim();
         product.BrandCode = NormalizeCodeSegment(product.BrandCode, 3, padToLength: true);
         product.Name = product.Name.Trim();
         product.ItemCode = GenerateItemCode(product.Name);
         product.Description = string.IsNullOrWhiteSpace(product.Description) ? null : product.Description.Trim();
-        product.UnitOfMeasure = product.UnitOfMeasure.Trim();
-    }
-
-    private static List<ProductVariantAttribute> NormalizeVariantAttributes(IEnumerable<ProductVariantAttribute> attributes)
-    {
-        return [.. attributes
-            .Select(attribute => new ProductVariantAttribute
-            {
-                ProductVariantAttributeId = attribute.ProductVariantAttributeId == Guid.Empty
-                    ? Guid.CreateVersion7()
-                    : attribute.ProductVariantAttributeId,
-                ProductId = attribute.ProductId,
-                AttributeName = string.IsNullOrWhiteSpace(attribute.AttributeName)
-                    ? string.Empty
-                    : attribute.AttributeName.Trim(),
-                AttributeCode = NormalizeCodeSegment(attribute.AttributeCode, 30),
-                SortOrder = attribute.SortOrder
-            })
-            .OrderBy(attribute => attribute.SortOrder)
-            .ThenBy(attribute => attribute.AttributeName)];
-    }
-
-    private static bool VariantAttributesMatch(
-        IEnumerable<ProductVariantAttribute> left,
-        IEnumerable<ProductVariantAttribute> right)
-    {
-        var leftList = left.ToList();
-        var rightList = right.ToList();
-
-        if (leftList.Count != rightList.Count)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < leftList.Count; i++)
-        {
-            if (!string.Equals(leftList[i].AttributeName, rightList[i].AttributeName, StringComparison.Ordinal) ||
-                !string.Equals(leftList[i].AttributeCode, rightList[i].AttributeCode, StringComparison.Ordinal) ||
-                leftList[i].SortOrder != rightList[i].SortOrder)
-            {
-                return false;
-            }
-        }
-
-        return true;
+        product.Color = NormalizeOptionalVariantValue(product.Color);
+        product.Storage = NormalizeOptionalVariantValue(product.Storage);
+        product.Dosage = NormalizeOptionalVariantValue(product.Dosage);
+        product.Grade = NormalizeOptionalVariantValue(product.Grade);
+        product.Finish = NormalizeOptionalVariantValue(product.Finish);
     }
 
     private static System.Linq.Expressions.Expression<Func<Product, ProductDTO>> BuildSummaryProjection()
@@ -448,27 +431,18 @@ public partial class ProductService(
             Sku = product.Sku,
             CategoryCode = product.CategoryCode,
             BrandCode = product.BrandCode,
+            Brand = product.Brand,
             ItemCode = product.ItemCode,
             Name = product.Name,
             Description = product.Description,
             UnitOfMeasure = product.UnitOfMeasure,
-            VariantAttributes = product.VariantAttributes
-                .OrderBy(attribute => attribute.SortOrder)
-                .Select(attribute => new ProductVariantAttributeDTO
-                {
-                    AttributeName = attribute.AttributeName,
-                    AttributeCode = attribute.AttributeCode,
-                    SortOrder = attribute.SortOrder
-                })
-                .ToList(),
-            Suppliers = product.ProductSuppliers
-                .OrderByDescending(supplier => supplier.IsDefault)
-                .ThenBy(supplier => supplier.SupplierId)
-                .Select(supplier => new ProductSupplierDTO
-                {
-                    SupplierName = supplier.Supplier.Name,
-                })
-                .ToList(),
+            Color = product.Color,
+            Storage = product.Storage,
+            Size = product.Size,
+            Dosage = product.Dosage,
+            Grade = product.Grade,
+            Finish = product.Finish,
+            Suppliers = null,
             ReorderThreshold = product.ReorderThreshold,
             ReorderQuantity = product.ReorderQuantity,
             IsActive = product.IsActive,
@@ -495,6 +469,32 @@ public partial class ProductService(
 
     private static string NormalizeAlphanumeric(string value)
         => new string([.. value.Where(char.IsLetterOrDigit)]).ToUpperInvariant();
+
+    private static string GenerateBrandCode(string? brand)
+    {
+        var normalized = new string([.. (brand ?? string.Empty)
+            .Where(char.IsLetterOrDigit)])
+            .ToUpperInvariant();
+
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return "XXX";
+        }
+
+        return normalized.Length >= 3
+            ? normalized[..3]
+            : normalized.PadRight(3, 'X');
+    }
+
+    private static string? NormalizeOptionalVariantValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim();
+    }
 
     private static string GenerateItemCode(string productName)
     {
@@ -568,5 +568,4 @@ public partial class ProductService(
 
     [GeneratedRegex("[A-Za-z0-9]+")]
     private static partial Regex MyRegex();
-
 }

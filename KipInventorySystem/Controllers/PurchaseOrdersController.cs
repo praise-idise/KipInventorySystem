@@ -15,32 +15,30 @@ namespace KipInventorySystem.API.Controllers;
 /// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
+[Authorize]
 public class PurchaseOrdersController(IPurchaseOrderService purchaseOrderService) : BaseController
 {
     /// <summary>
     /// List purchase orders with pagination.
     /// </summary>
     [HttpGet]
-    [Authorize]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
-        => ComputeResponse(await purchaseOrderService.GetAllAsync(parameters, cancellationToken));
+        => ComputePagedResponse(await purchaseOrderService.GetAllAsync(parameters, cancellationToken));
 
     /// <summary>
     /// Search purchase orders.
     /// </summary>
     [HttpGet("search")]
-    [Authorize]
     public async Task<IActionResult> Search(
         [FromQuery] string? searchTerm,
         [FromQuery] RequestParameters parameters,
         CancellationToken cancellationToken)
-        => ComputeResponse(await purchaseOrderService.SearchAsync(searchTerm, parameters, cancellationToken));
+        => ComputePagedResponse(await purchaseOrderService.SearchAsync(searchTerm, parameters, cancellationToken));
 
     /// <summary>
     /// Get a single purchase order by id.
     /// </summary>
     [HttpGet("{purchaseOrderId:guid}")]
-    [Authorize]
     public async Task<IActionResult> GetById(Guid purchaseOrderId, CancellationToken cancellationToken)
         => ComputeResponse(await purchaseOrderService.GetByIdAsync(purchaseOrderId, cancellationToken));
 

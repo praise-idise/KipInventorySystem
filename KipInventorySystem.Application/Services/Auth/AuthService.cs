@@ -101,7 +101,7 @@ public class AuthService(
         {
             logger.LogError(ex, "Redis unavailable while creating login session for user {UserId}", user.Id);
             return ServiceResponse<LoginResponseDTO>.Unavailable(
-                "Authentication service is temporarily unavailable. Please try again shortly.");
+                "Service is temporarily unavailable. Please try again shortly.");
         }
 
         logger.LogInformation(
@@ -174,7 +174,7 @@ public class AuthService(
         {
             logger.LogError(ex, "Redis unavailable while refreshing auth session");
             return ServiceResponse<LoginResponseDTO>.Unavailable(
-                "Authentication service is temporarily unavailable. Please try again shortly.");
+                "Service is temporarily unavailable. Please try again shortly.");
         }
     }
 
@@ -215,7 +215,7 @@ public class AuthService(
         {
             logger.LogError(ex, "Redis unavailable while logging out current session");
             return ServiceResponse.Unavailable(
-                "Authentication service is temporarily unavailable. Please try again shortly.");
+                "Service is temporarily unavailable. Please try again shortly.");
         }
     }
 
@@ -245,7 +245,7 @@ public class AuthService(
         {
             logger.LogError(ex, "Redis unavailable while revoking sessions for user {UserId}", userId);
             return ServiceResponse.Unavailable(
-                "Authentication service is temporarily unavailable. Please try again shortly.");
+                "Service is temporarily unavailable. Please try again shortly.");
         }
     }
 

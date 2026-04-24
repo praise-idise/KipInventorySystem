@@ -11,8 +11,9 @@ public interface IApprovalRequestService
         RequestParameters parameters,
         CancellationToken cancellationToken = default);
 
-    Task<ServiceResponse<List<ApprovalRequestDto>>> GetHistoryAsync(
+    Task<ServiceResponse<PaginationResult<ApprovalRequestDto>>> GetHistoryAsync(
         ApprovalDocumentType documentType,
         Guid documentId,
+        RequestParameters parameters,
         CancellationToken cancellationToken = default);
 }

@@ -114,7 +114,7 @@ public static class WebApplicationBuilderExtensions
             {
                 Title = "KIP Inventory Management API",
                 Version = "v1",
-                Description = "API for your application"
+                Description = "API endpoints for your full inventory management"
             });
             options.OperationFilter<RequiresIdempotencyKeyOperationFilter>();
 

@@ -14,32 +14,30 @@ namespace KipInventorySystem.API.Controllers;
 /// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
+[Authorize]
 public class SalesOrdersController(ISalesOrderService salesOrderService) : BaseController
 {
     /// <summary>
     /// List sales orders with pagination.
     /// </summary>
     [HttpGet]
-    [Authorize]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
-        => ComputeResponse(await salesOrderService.GetAllAsync(parameters, cancellationToken));
+        => ComputePagedResponse(await salesOrderService.GetAllAsync(parameters, cancellationToken));
 
     /// <summary>
     /// Search sales orders.
     /// </summary>
     [HttpGet("search")]
-    [Authorize]
     public async Task<IActionResult> Search(
         [FromQuery] string? searchTerm,
         [FromQuery] RequestParameters parameters,
         CancellationToken cancellationToken)
-        => ComputeResponse(await salesOrderService.SearchAsync(searchTerm, parameters, cancellationToken));
+        => ComputePagedResponse(await salesOrderService.SearchAsync(searchTerm, parameters, cancellationToken));
 
     /// <summary>
     /// Get a single sales order by id.
     /// </summary>
     [HttpGet("{salesOrderId:guid}")]
-    [Authorize]
     public async Task<IActionResult> GetById(Guid salesOrderId, CancellationToken cancellationToken)
         => ComputeResponse(await salesOrderService.GetByIdAsync(salesOrderId, cancellationToken));
 

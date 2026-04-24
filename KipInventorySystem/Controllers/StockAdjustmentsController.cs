@@ -15,32 +15,30 @@ namespace KipInventorySystem.API.Controllers;
 /// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
+[Authorize]
 public class StockAdjustmentsController(IStockAdjustmentService stockAdjustmentService) : BaseController
 {
     /// <summary>
     /// List stock adjustments with pagination.
     /// </summary>
     [HttpGet]
-    [Authorize]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
-        => ComputeResponse(await stockAdjustmentService.GetAllAsync(parameters, cancellationToken));
+        => ComputePagedResponse(await stockAdjustmentService.GetAllAsync(parameters, cancellationToken));
 
     /// <summary>
     /// Search stock adjustments.
     /// </summary>
     [HttpGet("search")]
-    [Authorize]
     public async Task<IActionResult> Search(
         [FromQuery] string? searchTerm,
         [FromQuery] RequestParameters parameters,
         CancellationToken cancellationToken)
-        => ComputeResponse(await stockAdjustmentService.SearchAsync(searchTerm, parameters, cancellationToken));
+        => ComputePagedResponse(await stockAdjustmentService.SearchAsync(searchTerm, parameters, cancellationToken));
 
     /// <summary>
     /// Get a single stock adjustment by id.
     /// </summary>
     [HttpGet("{stockAdjustmentId:guid}")]
-    [Authorize]
     public async Task<IActionResult> GetById(Guid stockAdjustmentId, CancellationToken cancellationToken)
         => ComputeResponse(await stockAdjustmentService.GetByIdAsync(stockAdjustmentId, cancellationToken));
 

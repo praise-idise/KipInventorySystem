@@ -14,32 +14,33 @@ namespace KipInventorySystem.API.Controllers;
 /// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
+[Authorize]
 public class CustomersController(ICustomerService customerService) : BaseController
 {
     /// <summary>
     /// List customers with pagination.
     /// </summary>
     [HttpGet]
-    [Authorize]
+    [ProducesResponseType(typeof(List<CustomerDto>), 200)]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
-        => ComputeResponse(await customerService.GetAllAsync(parameters, cancellationToken));
+        => ComputePagedResponse(await customerService.GetAllAsync(parameters, cancellationToken));
 
     /// <summary>
     /// Search customers by name, email, or phone.
     /// </summary>
     [HttpGet("search")]
-    [Authorize]
+    [ProducesResponseType(typeof(List<CustomerDto>), 200)]
     public async Task<IActionResult> Search(
         [FromQuery] string? searchTerm,
         [FromQuery] RequestParameters parameters,
         CancellationToken cancellationToken)
-        => ComputeResponse(await customerService.SearchAsync(searchTerm, parameters, cancellationToken));
+        => ComputePagedResponse(await customerService.SearchAsync(searchTerm, parameters, cancellationToken));
 
     /// <summary>
     /// Get a single customer by id.
     /// </summary>
     [HttpGet("{customerId:guid}")]
-    [Authorize]
+    [ProducesResponseType(typeof(CustomerDto), 200)]
     public async Task<IActionResult> GetById(Guid customerId, CancellationToken cancellationToken)
         => ComputeResponse(await customerService.GetByIdAsync(customerId, cancellationToken));
 
@@ -49,6 +50,7 @@ public class CustomersController(ICustomerService customerService) : BaseControl
     [HttpPost]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
     [RequiresIdempotencyKey]
+    [ProducesResponseType(typeof(CustomerDto), 200)]
     public async Task<IActionResult> Create([FromBody] CreateCustomerRequest request, CancellationToken cancellationToken)
     {
         var validation = ValidateModelState();
@@ -67,6 +69,7 @@ public class CustomersController(ICustomerService customerService) : BaseControl
     /// </summary>
     [HttpPatch("{customerId:guid}")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
+    [ProducesResponseType(typeof(CustomerDto), 200)]
     public async Task<IActionResult> Update(
         Guid customerId,
         [FromBody] UpdateCustomerRequest request,
@@ -83,6 +86,7 @@ public class CustomersController(ICustomerService customerService) : BaseControl
     /// </summary>
     [HttpDelete("{customerId:guid}")]
     [Roles(ROLE_TYPE.ADMIN, ROLE_TYPE.WAREHOUSE_OFFICER)]
+    [ProducesResponseType(typeof(CustomerDto), 204)]
     public async Task<IActionResult> SoftDelete(Guid customerId, CancellationToken cancellationToken)
         => ComputeResponse(await customerService.SoftDeleteAsync(customerId, cancellationToken));
 }

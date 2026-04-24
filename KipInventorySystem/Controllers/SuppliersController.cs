@@ -14,32 +14,30 @@ namespace KipInventorySystem.API.Controllers;
 /// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
+[Authorize]
 public class SuppliersController(IInventorySupplierService supplierService) : BaseController
 {
     /// <summary>
     /// List suppliers with pagination.
     /// </summary>
     [HttpGet]
-    [Authorize]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
-        => ComputeResponse(await supplierService.GetAllAsync(parameters, cancellationToken));
+        => ComputePagedResponse(await supplierService.GetAllAsync(parameters, cancellationToken));
 
     /// <summary>
     /// Search suppliers by key fields.
     /// </summary>
     [HttpGet("search")]
-    [Authorize]
     public async Task<IActionResult> Search(
         [FromQuery] string? searchTerm,
         [FromQuery] RequestParameters parameters,
         CancellationToken cancellationToken)
-        => ComputeResponse(await supplierService.SearchAsync(searchTerm, parameters, cancellationToken));
+        => ComputePagedResponse(await supplierService.SearchAsync(searchTerm, parameters, cancellationToken));
 
     /// <summary>
     /// Get a single supplier by id.
     /// </summary>
     [HttpGet("{supplierId:guid}")]
-    [Authorize]
     public async Task<IActionResult> GetById(Guid supplierId, CancellationToken cancellationToken)
         => ComputeResponse(await supplierService.GetByIdAsync(supplierId, cancellationToken));
 

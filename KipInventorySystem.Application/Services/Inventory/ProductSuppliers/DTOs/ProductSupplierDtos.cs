@@ -28,6 +28,9 @@ public class ProductSupplierDTO
     public Guid SupplierId { get; set; }
     public string SupplierName { get; set; } = string.Empty;
     public string? SupplierEmail { get; set; }
+    public string? SupplierPhone { get; set; }
+    public string? SupplierContactPerson { get; set; }
+    public int SupplierLeadTimeDays { get; set; }
     public decimal UnitCost { get; set; }
     public bool IsDefault { get; set; }
 }

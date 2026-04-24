@@ -10,36 +10,34 @@ using Microsoft.AspNetCore.Mvc;
 namespace KipInventorySystem.API.Controllers;
 
 /// <summary>
-/// Manage warehouse master data and warehouse lookup endpoints.
+/// Manage warehouses and warehouse lookup endpoints.
 /// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
+[Authorize]
 public class WarehousesController(IWarehouseService warehouseService) : BaseController
 {
     /// <summary>
     /// List warehouses with pagination.
     /// </summary>
     [HttpGet]
-    [Authorize]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
-        => ComputeResponse(await warehouseService.GetAllAsync(parameters, cancellationToken));
+        => ComputePagedResponse(await warehouseService.GetAllAsync(parameters, cancellationToken));
 
     /// <summary>
     /// Search warehouses by key fields.
     /// </summary>
     [HttpGet("search")]
-    [Authorize]
     public async Task<IActionResult> Search(
         [FromQuery] string? searchTerm,
         [FromQuery] RequestParameters parameters,
         CancellationToken cancellationToken)
-        => ComputeResponse(await warehouseService.SearchAsync(searchTerm, parameters, cancellationToken));
+        => ComputePagedResponse(await warehouseService.SearchAsync(searchTerm, parameters, cancellationToken));
 
     /// <summary>
     /// Get a single warehouse by id.
     /// </summary>
     [HttpGet("{warehouseId:guid}")]
-    [Authorize]
     public async Task<IActionResult> GetById(Guid warehouseId, CancellationToken cancellationToken)
         => ComputeResponse(await warehouseService.GetByIdAsync(warehouseId, cancellationToken));
 

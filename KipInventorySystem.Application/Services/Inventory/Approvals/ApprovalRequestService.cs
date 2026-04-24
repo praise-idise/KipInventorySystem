@@ -33,20 +33,26 @@ public class ApprovalRequestService(
         return ServiceResponse<PaginationResult<ApprovalRequestDto>>.Success(response);
     }
 
-    public async Task<ServiceResponse<List<ApprovalRequestDto>>> GetHistoryAsync(
+    public async Task<ServiceResponse<PaginationResult<ApprovalRequestDto>>> GetHistoryAsync(
         ApprovalDocumentType documentType,
         Guid documentId,
+        RequestParameters parameters,
         CancellationToken cancellationToken = default)
     {
-        var approvals = await unitOfWork.Repository<ApprovalRequest>().WhereAsync(
+        var approvals = await unitOfWork.Repository<ApprovalRequest>().GetPagedItemsAsync(
+                parameters,
+                query => query.OrderByDescending(x => x.RequestedAt),
             x => x.DocumentType == documentType && x.DocumentId == documentId,
-            cancellationToken);
+             cancellationToken);
 
-        var ordered = approvals
-            .OrderByDescending(x => x.RequestedAt)
-            .Select(x => mapper.Map<ApprovalRequestDto>(x))
-            .ToList();
+        var response = new PaginationResult<ApprovalRequestDto>
+        {
+            Records = [.. approvals.Records.Select(x => mapper.Map<ApprovalRequestDto>(x))],
+            TotalRecords = approvals.TotalRecords,
+            PageSize = approvals.PageSize,
+            CurrentPage = approvals.CurrentPage
+        };
 
-        return ServiceResponse<List<ApprovalRequestDto>>.Success(ordered);
+        return ServiceResponse<PaginationResult<ApprovalRequestDto>>.Success(response);
     }
 }

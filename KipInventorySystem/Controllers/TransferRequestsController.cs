@@ -15,32 +15,30 @@ namespace KipInventorySystem.API.Controllers;
 /// </summary>
 [ApiVersion("1.0")]
 [Route("api/v{version:apiVersion}/[controller]")]
+[Authorize]
 public class TransferRequestsController(ITransferRequestService transferRequestService) : BaseController
 {
     /// <summary>
     /// List transfer requests with pagination.
     /// </summary>
     [HttpGet]
-    [Authorize]
     public async Task<IActionResult> GetAll([FromQuery] RequestParameters parameters, CancellationToken cancellationToken)
-        => ComputeResponse(await transferRequestService.GetAllAsync(parameters, cancellationToken));
+        => ComputePagedResponse(await transferRequestService.GetAllAsync(parameters, cancellationToken));
 
     /// <summary>
     /// Search transfer requests.
     /// </summary>
     [HttpGet("search")]
-    [Authorize]
     public async Task<IActionResult> Search(
         [FromQuery] string? searchTerm,
         [FromQuery] RequestParameters parameters,
         CancellationToken cancellationToken)
-        => ComputeResponse(await transferRequestService.SearchAsync(searchTerm, parameters, cancellationToken));
+        => ComputePagedResponse(await transferRequestService.SearchAsync(searchTerm, parameters, cancellationToken));
 
     /// <summary>
     /// Get a single transfer request by id.
     /// </summary>
     [HttpGet("{transferRequestId:guid}")]
-    [Authorize]
     public async Task<IActionResult> GetById(Guid transferRequestId, CancellationToken cancellationToken)
         => ComputeResponse(await transferRequestService.GetByIdAsync(transferRequestId, cancellationToken));
 

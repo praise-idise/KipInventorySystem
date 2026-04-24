@@ -62,7 +62,7 @@ public static class AppSettings
 
     public class CorsSettings
     {
-        public string[] AllowedOrigins { get; set; } = ["http://localhost:3000"];
+        public string[] AllowedOrigins { get; set; } = [];
         public bool AllowCredentials { get; set; } = true;
     }
 }

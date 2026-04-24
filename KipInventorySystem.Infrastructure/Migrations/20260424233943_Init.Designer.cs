@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace KipInventorySystem.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260314192058_AdjustedProductEntity")]
-    partial class AdjustedProductEntity
+    [Migration("20260424233943_Init")]
+    partial class Init
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -114,11 +114,218 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("KipInventorySystem.Domain.Entities.ApprovalRequest", b =>
+                {
+                    b.Property<Guid>("ApprovalRequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("DecidedById")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("DocumentType")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RequestedById")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ApprovalRequestId");
+
+                    b.HasIndex("DocumentType", "DocumentId", "RequestedAt");
+
+                    b.ToTable("ApprovalRequests");
+                });
+
+            modelBuilder.Entity("KipInventorySystem.Domain.Entities.Customer", b =>
+                {
+                    b.Property<Guid>("CustomerId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(256)
+                        .HasColumnType("citext");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("citext");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("CustomerId");
+
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasFilter("\"Email\" IS NOT NULL");
+
+                    b.ToTable("Customers");
+                });
+
+            modelBuilder.Entity("KipInventorySystem.Domain.Entities.OpeningBalance", b =>
+                {
+                    b.Property<Guid>("OpeningBalanceId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AppliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("OpeningBalanceNumber")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WarehouseId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("OpeningBalanceId");
+
+                    b.HasIndex("OpeningBalanceNumber")
+                        .IsUnique();
+
+                    b.HasIndex("WarehouseId");
+
+                    b.ToTable("OpeningBalances");
+                });
+
+            modelBuilder.Entity("KipInventorySystem.Domain.Entities.OpeningBalanceLine", b =>
+                {
+                    b.Property<Guid>("OpeningBalanceLineId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("OpeningBalanceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("TotalCost")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<decimal>("UnitCost")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("OpeningBalanceLineId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("OpeningBalanceId", "ProductId")
+                        .IsUnique();
+
+                    b.ToTable("OpeningBalanceLines");
+                });
+
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.Product", b =>
                 {
                     b.Property<Guid>("ProductId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Brand")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
 
                     b.Property<string>("BrandCode")
                         .IsRequired()
@@ -130,11 +337,12 @@ namespace KipInventorySystem.Infrastructure.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
 
+                    b.Property<string>("Color")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("DefaultSupplierId")
-                        .HasColumnType("uuid");
 
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
@@ -142,6 +350,18 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Dosage")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Finish")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Grade")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
@@ -157,7 +377,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("citext");
 
                     b.Property<int>("ReorderQuantity")
                         .HasColumnType("integer");
@@ -165,22 +385,26 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.Property<int>("ReorderThreshold")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("Size")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Sku")
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("Storage")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
                     b.Property<string>("UnitOfMeasure")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
+                        .HasColumnType("citext");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("ProductId");
-
-                    b.HasIndex("DefaultSupplierId");
 
                     b.HasIndex("Sku")
                         .IsUnique();
@@ -188,34 +412,30 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.ToTable("Products");
                 });
 
-            modelBuilder.Entity("KipInventorySystem.Domain.Entities.ProductVariantAttribute", b =>
+            modelBuilder.Entity("KipInventorySystem.Domain.Entities.ProductSupplier", b =>
                 {
-                    b.Property<Guid>("ProductVariantAttributeId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("AttributeCode")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
-                    b.Property<string>("AttributeName")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid");
 
-                    b.HasKey("ProductVariantAttributeId");
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
 
-                    b.HasIndex("ProductId", "AttributeName")
-                        .IsUnique();
+                    b.Property<decimal>("UnitCost")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
-                    b.ToTable("ProductVariantAttributes");
+                    b.HasKey("ProductId", "SupplierId");
+
+                    b.HasIndex("ProductId")
+                        .IsUnique()
+                        .HasFilter("\"IsDefault\" = true");
+
+                    b.HasIndex("SupplierId");
+
+                    b.ToTable("ProductSuppliers");
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.PurchaseOrder", b =>
@@ -327,8 +547,14 @@ namespace KipInventorySystem.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
@@ -364,6 +590,8 @@ namespace KipInventorySystem.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("SalesOrderId");
+
+                    b.HasIndex("CustomerId");
 
                     b.HasIndex("SalesOrderNumber")
                         .IsUnique();
@@ -505,6 +733,10 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.Property<Guid>("StockAdjustmentId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal?>("UnitCost")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -525,6 +757,14 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Creator")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("CreatorId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
@@ -556,6 +796,14 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.Property<int?>("ReferenceType")
                         .HasColumnType("integer");
+
+                    b.Property<decimal>("TotalCost")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<decimal>("UnitCost")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -590,7 +838,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
                     b.Property<string>("Email")
                         .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
+                        .HasColumnType("citext");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
@@ -604,7 +852,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasColumnType("citext");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(40)
@@ -614,6 +862,13 @@ namespace KipInventorySystem.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("SupplierId");
+
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasFilter("\"Email\" IS NOT NULL");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
 
                     b.ToTable("Suppliers");
                 });
@@ -793,11 +1048,19 @@ namespace KipInventorySystem.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<decimal>("AverageUnitCost")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("InventoryValue")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
@@ -965,25 +1228,53 @@ namespace KipInventorySystem.Infrastructure.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
-            modelBuilder.Entity("KipInventorySystem.Domain.Entities.Product", b =>
+            modelBuilder.Entity("KipInventorySystem.Domain.Entities.OpeningBalance", b =>
                 {
-                    b.HasOne("KipInventorySystem.Domain.Entities.Supplier", "DefaultSupplier")
-                        .WithMany("Products")
-                        .HasForeignKey("DefaultSupplierId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                    b.HasOne("KipInventorySystem.Domain.Entities.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-                    b.Navigation("DefaultSupplier");
+                    b.Navigation("Warehouse");
                 });
 
-            modelBuilder.Entity("KipInventorySystem.Domain.Entities.ProductVariantAttribute", b =>
+            modelBuilder.Entity("KipInventorySystem.Domain.Entities.OpeningBalanceLine", b =>
+                {
+                    b.HasOne("KipInventorySystem.Domain.Entities.OpeningBalance", "OpeningBalance")
+                        .WithMany("Lines")
+                        .HasForeignKey("OpeningBalanceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("KipInventorySystem.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("OpeningBalance");
+
+                    b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("KipInventorySystem.Domain.Entities.ProductSupplier", b =>
                 {
                     b.HasOne("KipInventorySystem.Domain.Entities.Product", "Product")
-                        .WithMany("VariantAttributes")
+                        .WithMany("ProductSuppliers")
                         .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("KipInventorySystem.Domain.Entities.Supplier", "Supplier")
+                        .WithMany("ProductSuppliers")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Product");
+
+                    b.Navigation("Supplier");
                 });
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.PurchaseOrder", b =>
@@ -1026,11 +1317,19 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.SalesOrder", b =>
                 {
+                    b.HasOne("KipInventorySystem.Domain.Entities.Customer", "Customer")
+                        .WithMany("SalesOrders")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("KipInventorySystem.Domain.Entities.Warehouse", "Warehouse")
                         .WithMany()
                         .HasForeignKey("WarehouseId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Customer");
 
                     b.Navigation("Warehouse");
                 });
@@ -1211,13 +1510,23 @@ namespace KipInventorySystem.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("KipInventorySystem.Domain.Entities.Customer", b =>
+                {
+                    b.Navigation("SalesOrders");
+                });
+
+            modelBuilder.Entity("KipInventorySystem.Domain.Entities.OpeningBalance", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.Product", b =>
                 {
+                    b.Navigation("ProductSuppliers");
+
                     b.Navigation("PurchaseOrderLines");
 
                     b.Navigation("StockMovements");
-
-                    b.Navigation("VariantAttributes");
 
                     b.Navigation("WarehouseInventories");
                 });
@@ -1239,7 +1548,7 @@ namespace KipInventorySystem.Infrastructure.Migrations
 
             modelBuilder.Entity("KipInventorySystem.Domain.Entities.Supplier", b =>
                 {
-                    b.Navigation("Products");
+                    b.Navigation("ProductSuppliers");
 
                     b.Navigation("PurchaseOrders");
                 });

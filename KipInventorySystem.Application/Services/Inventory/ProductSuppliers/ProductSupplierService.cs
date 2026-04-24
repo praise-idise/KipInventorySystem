@@ -168,6 +168,9 @@ public class ProductSupplierService(
             SupplierId = entity.SupplierId,
             SupplierName = supplier.Name,
             SupplierEmail = supplier.Email,
+            SupplierPhone = supplier.Phone,
+            SupplierContactPerson = supplier.ContactPerson,
+            SupplierLeadTimeDays = supplier.LeadTimeDays,
             UnitCost = entity.UnitCost,
             IsDefault = entity.IsDefault
         };

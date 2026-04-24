@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using KipInventorySystem.Domain.Enums;
 
 namespace KipInventorySystem.Domain.Entities;
 
@@ -25,16 +26,34 @@ public class Product : BaseEntity
     [MaxLength(3)]
     public string BrandCode { get; set; } = string.Empty;
 
+    [MaxLength(80)]
+    public string Brand { get; set; } = string.Empty;
+
     [MaxLength(20)]
     public string ItemCode { get; set; } = string.Empty;
 
-    [MaxLength(20)]
-    public string UnitOfMeasure { get; set; } = "pcs";
+    public UnitOfMeasure UnitOfMeasure { get; set; } = UnitOfMeasure.Pcs;
+
+    [MaxLength(30)]
+    public string? Color { get; set; }
+
+    [MaxLength(30)]
+    public string? Storage { get; set; }
+
+    public ProductSize? Size { get; set; }
+
+    [MaxLength(30)]
+    public string? Dosage { get; set; }
+
+    [MaxLength(30)]
+    public string? Grade { get; set; }
+
+    [MaxLength(30)]
+    public string? Finish { get; set; }
 
     public int ReorderThreshold { get; set; } = 10;
     public int ReorderQuantity { get; set; } = 20;
 
-    public ICollection<ProductVariantAttribute> VariantAttributes { get; set; } = [];
     public ICollection<ProductSupplier> ProductSuppliers { get; set; } = [];
     public ICollection<WarehouseInventory> WarehouseInventories { get; set; } = [];
     public ICollection<PurchaseOrderLine> PurchaseOrderLines { get; set; } = [];
