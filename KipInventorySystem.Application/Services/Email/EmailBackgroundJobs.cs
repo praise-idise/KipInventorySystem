@@ -2,62 +2,52 @@ using Microsoft.Extensions.Logging;
 
 namespace KipInventorySystem.Application.Services.Email;
 
-public interface IEmailBackgroundJobs
-{
-    Task SendWelcomeEmailAsync(string toEmail, string firstName, string lastName, CancellationToken cancellationToken = default);
-    Task SendPasswordResetEmailAsync(string toEmail, string firstName, string resetLink, int expirationHours, CancellationToken cancellationToken = default);
-    Task SendPasswordChangedEmailAsync(string toEmail, string firstName, string ipAddress, string userAgent, CancellationToken cancellationToken = default);
-    Task SendPasswordResetSuccessEmailAsync(string toEmail, string firstName, string ipAddress, string userAgent, CancellationToken cancellationToken = default);
-    Task SendLowStockAlertEmailAsync(
-        string toEmail,
-        string recipientName,
-        string warehouseName,
-        string warehouseCode,
-        string productName,
-        string sku,
-        int availableQuantity,
-        int threshold,
-        int reorderQuantity,
-        CancellationToken cancellationToken = default);
-    Task SendManualProcurementReviewEmailAsync(
-        string toEmail,
-        string recipientName,
-        string warehouseName,
-        string warehouseCode,
-        string productName,
-        string sku,
-        int availableQuantity,
-        int threshold,
-        CancellationToken cancellationToken = default);
-    Task SendPurchaseOrderApprovedEmailAsync(
-        string toEmail,
-        string supplierName,
-        string purchaseOrderNumber,
-        string warehouseName,
-        DateTime? expectedArrivalDate,
-        string lineSummary,
-        string? notes,
-        CancellationToken cancellationToken = default);
-}
-
 public class EmailBackgroundJobs(IEmailService emailService, ILogger<EmailBackgroundJobs> logger) : IEmailBackgroundJobs
 {
-    public async Task SendWelcomeEmailAsync(string toEmail, string firstName, string lastName, CancellationToken cancellationToken = default)
+    public async Task SendVerificationEmailAsync(
+    string toEmail,
+    string firstName,
+    string verifyLink,
+    CancellationToken cancellationToken = default)
     {
         try
         {
-            var welcomeEmailHtml = EmailTemplates.WelcomeEmail(firstName, lastName);
+            var html = EmailTemplates.VerificationEmail(firstName, verifyLink);
             await emailService.SendHtmlEmailAsync(
                 toEmail,
-                "Welcome to Our Platform!",
-                welcomeEmailHtml,
+                "Verify your email address",
+                html,
                 cancellationToken);
-            
-            logger.LogInformation("Welcome email sent to {Email}", toEmail);
+
+            logger.LogInformation("Verification email sent to {Email}", toEmail);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to send welcome email to {Email}", toEmail);
+            logger.LogError(ex, "Failed to send verification email to {Email}", toEmail);
+            throw;
+        }
+    }
+
+    public async Task SendResendVerificationEmailAsync(
+    string toEmail,
+    string firstName,
+    string verifyLink,
+    CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var html = EmailTemplates.ResendVerificationEmail(firstName, verifyLink);
+            await emailService.SendHtmlEmailAsync(
+                toEmail,
+                "New Email Verification Link",
+                html,
+                cancellationToken);
+
+            logger.LogInformation("Resend verification email sent to {Email}", toEmail);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send resend verification email to {Email}", toEmail);
             throw;
         }
     }
@@ -72,7 +62,7 @@ public class EmailBackgroundJobs(IEmailService emailService, ILogger<EmailBackgr
                 "Password Reset Request",
                 passwordResetEmailHtml,
                 cancellationToken);
-            
+
             logger.LogInformation("Password reset email sent to {Email}", toEmail);
         }
         catch (Exception ex)
@@ -92,7 +82,7 @@ public class EmailBackgroundJobs(IEmailService emailService, ILogger<EmailBackgr
                 "Your Password Has Been Changed",
                 passwordChangedEmailHtml,
                 cancellationToken);
-            
+
             logger.LogInformation("Password changed notification email sent to {Email}", toEmail);
         }
         catch (Exception ex)
@@ -112,7 +102,7 @@ public class EmailBackgroundJobs(IEmailService emailService, ILogger<EmailBackgr
                 "Your Password Has Been Reset",
                 passwordResetSuccessEmailHtml,
                 cancellationToken);
-            
+
             logger.LogInformation("Password reset success email sent to {Email}", toEmail);
         }
         catch (Exception ex)

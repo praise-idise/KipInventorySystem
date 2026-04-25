@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using KipInventorySystem.Application.Services.Redis;
 using KipInventorySystem.Shared.Interfaces;
-using KipInventorySystem.Shared.Responses;
+using KipInventorySystem.Shared.Models;
 using Microsoft.Extensions.Logging;
 
 namespace KipInventorySystem.Application.Services.Inventory.Common;

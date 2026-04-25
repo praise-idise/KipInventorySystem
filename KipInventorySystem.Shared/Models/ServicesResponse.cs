@@ -1,6 +1,6 @@
 ﻿using System.Net;
 
-namespace KipInventorySystem.Shared.Responses;
+namespace KipInventorySystem.Shared.Models;
 
 public class ServiceResponse : ServiceResponseBase
 {

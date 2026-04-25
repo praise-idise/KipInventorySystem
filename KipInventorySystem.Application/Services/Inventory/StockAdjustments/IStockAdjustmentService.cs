@@ -1,7 +1,6 @@
 using KipInventorySystem.Application.Services.Inventory.StockAdjustments.DTOs;
 using KipInventorySystem.Application.Services.Inventory.Approvals.DTOs;
 using KipInventorySystem.Shared.Models;
-using KipInventorySystem.Shared.Responses;
 
 namespace KipInventorySystem.Application.Services.Inventory.StockAdjustments;
 

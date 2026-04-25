@@ -9,7 +9,6 @@ using KipInventorySystem.Application.Services.Redis;
 using KipInventorySystem.Domain.Entities;
 using KipInventorySystem.Shared.Enums;
 using KipInventorySystem.Shared.Interfaces;
-using KipInventorySystem.Shared.Responses;
 using Hangfire;
 using MapsterMapper;
 using Microsoft.AspNetCore.Identity;
@@ -18,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using static KipInventorySystem.Shared.Models.AppSettings;
+using KipInventorySystem.Shared.Models;
 
 namespace KipInventorySystem.Application.Services.Auth;
 
@@ -32,50 +32,29 @@ public class AuthService(
 ) : IAuthService
 {
 
-    public async Task<ServiceResponse<LoginResponseDTO>> SignupAsync(RegisterDTO model)
+    public async Task<ServiceResponse> SignupAsync(RegisterDTO model)
     {
         var existingUser = await userManager.FindByEmailAsync(model.Email);
         if (existingUser != null)
-            return ServiceResponse<LoginResponseDTO>.Conflict("Email already exists");
+            return ServiceResponse.Conflict("Email already exists");
 
         var user = mapper.Map<ApplicationUser>(model);
 
         var result = await userManager.CreateAsync(user, model.Password);
         if (!result.Succeeded)
-            return ServiceResponse<LoginResponseDTO>.BadRequest(
+            return ServiceResponse.BadRequest(
                 string.Join(", ", result.Errors.Select(e => e.Description)));
 
         // default role
         await userManager.AddToRoleAsync(user, ROLE_TYPE.USER.ToString());
 
-        // ---------- ENQUEUE WELCOME EMAIL ----------
-        BackgroundJob.Enqueue<IEmailBackgroundJobs>(
-            "emails",
-            jobs => jobs.SendWelcomeEmailAsync(
-                user.Email!,
-                user.FirstName ?? "User",
-                user.LastName ?? "",
-                default));
-        
-        logger.LogInformation("Welcome email job enqueued for {Email}", user.Email);
+        // ---------- ENQUEUE VERIFICATION EMAIL ----------
+        await SendVerificationEmailAsync(user);
 
-        // ---------- SESSION CREATION ----------
-        var sessionId = await CreateSessionAsync(user);
-        logger.LogInformation(
-            "User {UserId} signed up. Session {SessionId}",
-            user.Id, sessionId);
+        logger.LogInformation("User {UserId} signed up, verification email enqueued", user.Id);
 
-        // ---------- ACCESS TOKEN ----------
-        var accessToken = await GenerateJwtToken(user);
-
-        return ServiceResponse<LoginResponseDTO>.Success(new LoginResponseDTO
-        {
-            Token = accessToken,
-            ExpiresAt = DateTime.UtcNow.AddMinutes(jwtOptions.Value.ExpirationMinutes),
-            Email = user.Email!,
-            UserId = user.Id,
-            Roles = await userManager.GetRolesAsync(user)
-        }, "Signup successful");
+        // Return 200 but no token — user must verify first
+        return ServiceResponse.Success("Account created. Please check your email to verify your account.");
     }
 
 
@@ -88,6 +67,14 @@ public class AuthService(
         {
             logger.LogWarning("Failed login attempt for {Email}", model.Email);
             return ServiceResponse<LoginResponseDTO>.Unauthorized("Invalid credentials");
+        }
+
+        // ---------- BLOCK UNVERIFIED USERS ----------
+        if (!await userManager.IsEmailConfirmedAsync(user))
+        {
+            logger.LogWarning("Unverified login attempt for {Email}", model.Email);
+            return ServiceResponse<LoginResponseDTO>.Forbidden(
+                "Email not verified. Please check your inbox or request a new verification link.");
         }
 
         var accessToken = await GenerateJwtToken(user);
@@ -104,9 +91,7 @@ public class AuthService(
                 "Service is temporarily unavailable. Please try again shortly.");
         }
 
-        logger.LogInformation(
-            "User {UserId} logged in. Session {SessionId}",
-            user.Id, sessionId);
+        logger.LogInformation("User {UserId} logged in. Session {SessionId}", user.Id, sessionId);
 
         return ServiceResponse<LoginResponseDTO>.Success(new LoginResponseDTO
         {
@@ -284,7 +269,7 @@ public class AuthService(
                 userContext.IpAddress ?? "unknown",
                 userContext.UserAgent ?? "unknown",
                 default));
-        
+
         logger.LogInformation("Password changed notification email job enqueued for {Email}", user.Email);
 
         return ServiceResponse.Success("Password changed successfully");
@@ -325,7 +310,7 @@ public class AuthService(
                 resetLink,
                 24,
                 default));
-        
+
         logger.LogInformation("Password reset email job enqueued for {Email}", user.Email);
 
         return ServiceResponse.Success("If the email exists, a reset link has been sent");
@@ -360,14 +345,108 @@ public class AuthService(
                 userContext.IpAddress ?? "unknown",
                 userContext.UserAgent ?? "unknown",
                 default));
-        
+
         logger.LogInformation("Password reset success email job enqueued for {Email}", user.Email);
 
         return ServiceResponse.Success("Password reset successful");
     }
 
+    public async Task<ServiceResponse<LoginResponseDTO>> VerifyEmailAsync(string email, string token)
+    {
+        var user = await userManager.FindByEmailAsync(email);
+        if (user == null)
+            return ServiceResponse<LoginResponseDTO>.BadRequest("Invalid verification link");
+
+        if (await userManager.IsEmailConfirmedAsync(user))
+            return ServiceResponse<LoginResponseDTO>.BadRequest("Email is already verified");
+
+        var result = await userManager.ConfirmEmailAsync(user, token);
+        if (!result.Succeeded)
+        {
+            logger.LogWarning("Email verification failed for {Email}: {Errors}",
+                email, string.Join(", ", result.Errors.Select(e => e.Description)));
+            return ServiceResponse<LoginResponseDTO>.BadRequest(
+                "Invalid or expired verification link. Please request a new one.");
+        }
+
+        logger.LogInformation("Email verified for user {UserId}", user.Id);
+
+        string sessionId;
+        try
+        {
+            sessionId = await CreateSessionAsync(user);
+        }
+        catch (RedisUnavailableException ex)
+        {
+            logger.LogError(ex, "Redis unavailable after email verification for user {UserId}", user.Id);
+            return ServiceResponse<LoginResponseDTO>.Unavailable(
+                "Email verified but session could not be created. Please log in.");
+        }
+
+        var accessToken = await GenerateJwtToken(user);
+
+        return ServiceResponse<LoginResponseDTO>.Success(new LoginResponseDTO
+        {
+            Token = accessToken,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(jwtOptions.Value.ExpirationMinutes),
+            Email = user.Email!,
+            UserId = user.Id,
+            Roles = await userManager.GetRolesAsync(user)
+        }, "Email verified successfully");
+    }
 
 
+    public async Task<ServiceResponse> ResendVerificationEmailAsync(string email)
+    {
+        var user = await userManager.FindByEmailAsync(email);
+
+        // Don't leak existence — identical response either way
+        if (user == null || await userManager.IsEmailConfirmedAsync(user))
+            return ServiceResponse.Success(
+                "If the email exists and is unverified, a new link has been sent");
+
+        await SendVerificationEmailAsync(user, isResend: true);
+
+        logger.LogInformation("Verification email resent for user {UserId}", user.Id);
+        return ServiceResponse.Success(
+            "If the email exists and is unverified, a new link has been sent");
+    }
+
+    private async Task SendVerificationEmailAsync(ApplicationUser user, bool isResend = false)
+    {
+        var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+
+        var frontend = frontendOptions.Value;
+
+        var verifyLink =
+            $"{frontend.BaseUrl.TrimEnd('/')}/{frontend.VerifyEmailPath.TrimStart('/')}?" +
+            $"token={Uri.EscapeDataString(token)}&email={Uri.EscapeDataString(user.Email!)}";
+
+        if (isResend)
+        {
+            BackgroundJob.Enqueue<IEmailBackgroundJobs>(
+                "emails",
+                jobs => jobs.SendResendVerificationEmailAsync(
+                    user.Email!,
+                    user.FirstName ?? "User",
+                    verifyLink,
+                    default));
+
+            logger.LogInformation("Resend verification email job enqueued for {Email}", user.Email);
+        }
+        else
+        {
+            BackgroundJob.Enqueue<IEmailBackgroundJobs>(
+                "emails",
+                jobs => jobs.SendVerificationEmailAsync(
+                    user.Email!,
+                    user.FirstName ?? "User",
+                    verifyLink,
+                    default));
+
+            logger.LogInformation("Verification email job enqueued for {Email}", user.Email);
+        }
+    }
 
     private async Task<string> GenerateJwtToken(ApplicationUser user)
     {

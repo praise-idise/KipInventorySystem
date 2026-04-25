@@ -1,4 +1,4 @@
-using KipInventorySystem.Shared.Responses;
+using KipInventorySystem.Shared.Models;
 
 namespace KipInventorySystem.Application.Services.Inventory.Common;
 

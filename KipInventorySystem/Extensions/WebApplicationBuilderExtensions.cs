@@ -1,17 +1,20 @@
-using System.Security.Claims;
 using System.Reflection;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Asp.Versioning;
+using KipInventorySystem.API.Attributes;
 using KipInventorySystem.API.Middlewares;
 using KipInventorySystem.Domain.Entities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using Swashbuckle.AspNetCore.SwaggerGen;
 using static KipInventorySystem.Shared.Models.AppSettings;
 
 namespace KipInventorySystem.API.Extensions;
@@ -31,15 +34,35 @@ public static class WebApplicationBuilderExtensions
                          .WriteTo.Console();
                  });
 
-        builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
-        builder.Services.Configure<FrontendSettings>(builder.Configuration.GetSection("Frontend"));
-        builder.Services.Configure<AdminSettings>(builder.Configuration.GetSection("AdminSettings"));
-        builder.Services.Configure<CorsSettings>(builder.Configuration.GetSection("Cors"));
+        // Configure strongly typed app settings objects
+        builder.Services
+        .AddOptions<JwtSettings>()
+        .Bind(builder.Configuration.GetSection("JwtSettings"))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
 
-        var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()
-            ?? throw new InvalidOperationException("JwtSettings configuration is missing.");
+        builder.Services
+        .AddOptions<FrontendSettings>()
+        .Bind(builder.Configuration.GetSection("Frontend"))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
 
-        var key = Encoding.UTF8.GetBytes(jwtSettings.SecretKey);
+        builder.Services
+        .AddOptions<AdminSettings>()
+        .Bind(builder.Configuration.GetSection("AdminSettings"))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+
+        builder.Services
+        .AddOptions<CorsSettings>()
+        .Bind(builder.Configuration.GetSection("Cors"))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+
+        // JWT Authentication Configuration
+        var jwtSettings = builder.Services.BuildServiceProvider().GetRequiredService<IOptions<JwtSettings>>().Value;
+
+        var securityKey = Encoding.UTF8.GetBytes(jwtSettings.SecretKey);
 
         builder.Services.AddAuthentication(options =>
           {
@@ -57,7 +80,7 @@ public static class WebApplicationBuilderExtensions
                   ValidateIssuerSigningKey = true,
                   ValidIssuer = jwtSettings.Issuer,
                   ValidAudience = jwtSettings.Audience,
-                  IssuerSigningKey = new SymmetricSecurityKey(key),
+                  IssuerSigningKey = new SymmetricSecurityKey(securityKey),
               };
 
               options.Events = new JwtBearerEvents
@@ -108,6 +131,7 @@ public static class WebApplicationBuilderExtensions
             setup.SubstituteApiVersionInUrl = true;
         });
 
+        #region SWAGGER SETTINGS
         builder.Services.AddSwaggerGen(options =>
         {
             options.SwaggerDoc("v1", new OpenApiInfo
@@ -153,6 +177,8 @@ public static class WebApplicationBuilderExtensions
             options.UseInlineDefinitionsForEnums();
         });
 
+        #endregion
+
         builder.Services.AddRateLimiter(options =>
         {
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
@@ -196,4 +222,42 @@ public static class WebApplicationBuilderExtensions
         });
 
     }
+
+    private class RequiresIdempotencyKeyOperationFilter : IOperationFilter
+    {
+        public void Apply(OpenApiOperation operation, OperationFilterContext context)
+        {
+            var requiresIdempotencyKey = context.MethodInfo
+                .GetCustomAttributes(true)
+                .OfType<RequiresIdempotencyKeyAttribute>()
+                .Any();
+
+            if (!requiresIdempotencyKey)
+            {
+                return;
+            }
+
+            operation.Parameters ??= [];
+
+            if (operation.Parameters.Any(parameter =>
+                    string.Equals(parameter.Name, "X-Idempotency-Key", StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            operation.Parameters.Add(new OpenApiParameter
+            {
+                Name = "X-Idempotency-Key",
+                In = ParameterLocation.Header,
+                Required = true,
+                Description = "Reuse the same key only when retrying the exact same request.",
+                Schema = new OpenApiSchema
+                {
+                    Type = "string",
+                    Example = new Microsoft.OpenApi.Any.OpenApiString("6c2f6d59-9a3e-4f8c-8f3d-3f15ac4a9e6b")
+                }
+            });
+        }
+    }
+
 }

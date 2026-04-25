@@ -3,7 +3,6 @@ using KipInventorySystem.Domain.Entities;
 using KipInventorySystem.Domain.Enums;
 using KipInventorySystem.Domain.Interfaces;
 using KipInventorySystem.Shared.Models;
-using KipInventorySystem.Shared.Responses;
 using MapsterMapper;
 
 namespace KipInventorySystem.Application.Services.Inventory.Approvals;

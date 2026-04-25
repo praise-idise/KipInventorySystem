@@ -39,15 +39,17 @@ public static class ServicesCollectionExtensions
 
         services.AddIdentityCore<ApplicationUser>(options =>
         {
-            options.Password.RequireDigit = true;
-            options.Password.RequiredLength = 6;
-            options.Password.RequireNonAlphanumeric = false;
-            options.Password.RequireUppercase = true;
-            options.Password.RequireLowercase = true;
+            options.Password.RequiredLength = 8;
         })
           .AddRoles<IdentityRole>()
           .AddEntityFrameworkStores<ApplicationDbContext>()
           .AddDefaultTokenProviders();
+
+        // 24-hour expiry for email confirmation + password reset tokens
+        services.Configure<DataProtectionTokenProviderOptions>(options =>
+        {
+            options.TokenLifespan = TimeSpan.FromHours(24);
+        });
 
         services.AddRedis(configuration);
 
@@ -58,19 +60,35 @@ public static class ServicesCollectionExtensions
         services.AddScoped<IRedisService, RedisService>();
 
         // Cloudinary
-        services.Configure<CloudinarySettings>(configuration.GetSection("Cloudinary"));
+        services.AddOptions<CloudinarySettings>()
+        .Bind(configuration.GetSection("Cloudinary"))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+
         services.AddScoped<IFilesUploadService, CloudinaryService>();
 
         // SMTP Email
-        services.Configure<SmtpSettings>(configuration.GetSection("Smtp"));
+        services.AddOptions<SmtpSettings>()
+        .Bind(configuration.GetSection("Smtp"))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+
         services.AddScoped<IEmailService, EmailService>();
 
         // Stripe
-        services.Configure<StripeSettings>(configuration.GetSection("Stripe"));
+        services.AddOptions<StripeSettings>()
+        .Bind(configuration.GetSection("Stripe"))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+
         services.AddScoped<IPaymentService, StripeService>();
 
         // Hangfire
-        services.Configure<HangfireSettings>(configuration.GetSection("Hangfire"));
+        services.AddOptions<HangfireSettings>()
+        .Bind(configuration.GetSection("Hangfire"))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+
         services.AddHangfire(configuration);
 
         // Seeders

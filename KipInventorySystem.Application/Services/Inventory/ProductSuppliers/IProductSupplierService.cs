@@ -1,5 +1,5 @@
 using KipInventorySystem.Application.Services.Inventory.ProductSuppliers.DTOs;
-using KipInventorySystem.Shared.Responses;
+using KipInventorySystem.Shared.Models;
 
 namespace KipInventorySystem.Application.Services.Inventory.ProductSuppliers;
 

@@ -8,7 +8,6 @@ using KipInventorySystem.Domain.Enums;
 using KipInventorySystem.Domain.Interfaces;
 using KipInventorySystem.Shared.Interfaces;
 using KipInventorySystem.Shared.Models;
-using KipInventorySystem.Shared.Responses;
 using MapsterMapper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -306,7 +305,7 @@ public class PurchaseOrderService(
             "purchase-order-approve",
             idempotencyKey,
             purchaseOrderId,
-            token => transactionRunner.ExecuteSerializableAsync("purchaseOrder.approve", async _ =>
+            (Func<CancellationToken, Task<ServiceResponse<PurchaseOrderDTO>>>)(            token => transactionRunner.ExecuteSerializableAsync("purchaseOrder.approve", (Func<CancellationToken, Task<ServiceResponse<PurchaseOrderDTO>>>)(async _ =>
             {
                 var currentUser = userContext.GetCurrentUser();
                 var poRepo = unitOfWork.Repository<PurchaseOrder>();
@@ -384,7 +383,7 @@ public class PurchaseOrderService(
                 return ServiceResponse<PurchaseOrderDTO>.Success(
                     mapper.Map<PurchaseOrderDTO>(po),
                     "Purchase order approved.");
-            }, token),
+            }), token)),
             cancellationToken);
     }
 

@@ -2,7 +2,7 @@ namespace KipInventorySystem.Application.Services.Email;
 
 public static class EmailTemplates
 {
-    public static string WelcomeEmail(string firstName, string lastName)
+    public static string VerificationEmail(string firstName, string verifyLink)
     {
         return $@"
 <!DOCTYPE html>
@@ -16,23 +16,81 @@ public static class EmailTemplates
         .header {{ background-color: #4F46E5; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
         .content {{ background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }}
         .button {{ display: inline-block; padding: 12px 24px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
+        .warning {{ background-color: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; }}
         .footer {{ text-align: center; margin-top: 30px; color: #6B7280; font-size: 14px; }}
     </style>
 </head>
 <body>
     <div class='container'>
         <div class='header'>
-            <h1>Welcome to Our Platform!</h1>
+            <h1>Verify Your Email Address</h1>
         </div>
         <div class='content'>
-            <h2>Hello {firstName} {lastName},</h2>
+            <h2>Hello {firstName},</h2>
             <p>Thank you for registering with us! We're excited to have you on board.</p>
-            <p>Your account has been successfully created and you can now access all the features of our platform.</p>
-            <p>If you have any questions or need assistance, please don't hesitate to reach out to our support team.</p>
+            <p>Please verify your email address to activate your account.</p>
+            <div style='text-align: center;'>
+                <a href='{verifyLink}' class='button'>Verify Email</a>
+            </div>
+            <p>Or copy and paste this link into your browser:</p>
+            <p style='word-break: break-all; color: #4F46E5;'>{verifyLink}</p>
+            <div class='warning'>
+                <strong>⚠️ Important:</strong> This link will expire in 24 hours.
+            </div>
+            <p>If you didn't create an account, you can safely ignore this email.</p>
             <p>Best regards,<br>The Team</p>
         </div>
         <div class='footer'>
-            <p>© {DateTime.UtcNow.Year} All rights reserved.</p>
+            <p>© {DateTime.UtcNow.Year} Progomid Solutions. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>";
+    }
+
+    public static string ResendVerificationEmail(string firstName, string verifyLink)
+    {
+        return $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background-color: #4F46E5; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }}
+        .content {{ background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }}
+        .button {{ display: inline-block; padding: 12px 24px; background-color: #4F46E5; color: white; text-decoration: none; border-radius: 6px; margin: 20px 0; }}
+        .warning {{ background-color: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; }}
+        .info-box {{ background-color: #DBEAFE; border-left: 4px solid #3B82F6; padding: 15px; margin: 20px 0; }}
+        .footer {{ text-align: center; margin-top: 30px; color: #6B7280; font-size: 14px; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>New Verification Link</h1>
+        </div>
+        <div class='content'>
+            <h2>Hello {firstName},</h2>
+            <p>You requested a new verification link for your account. Click the button below to verify your email address.</p>
+            <div class='info-box'>
+                <strong>ℹ️ Note:</strong> Any previously sent verification links are now invalid. Please use only this new link.
+            </div>
+            <div style='text-align: center;'>
+                <a href='{verifyLink}' class='button'>Verify Email</a>
+            </div>
+            <p>Or copy and paste this link into your browser:</p>
+            <p style='word-break: break-all; color: #4F46E5;'>{verifyLink}</p>
+            <div class='warning'>
+                <strong>⚠️ Important:</strong> This link will expire in 24 hours.
+            </div>
+            <p>If you didn't request this, you can safely ignore this email.</p>
+            <p>Best regards,<br>The Team</p>
+        </div>
+        <div class='footer'>
+            <p>© {DateTime.UtcNow.Year} Progomid Solutions. All rights reserved.</p>
         </div>
     </div>
 </body>
@@ -77,7 +135,7 @@ public static class EmailTemplates
             <p>Best regards,<br>The Team</p>
         </div>
         <div class='footer'>
-            <p>© {DateTime.UtcNow.Year} All rights reserved.</p>
+            <p>© {DateTime.UtcNow.Year} Progomid Solutions. All rights reserved.</p>
         </div>
     </div>
 </body>
@@ -124,7 +182,7 @@ public static class EmailTemplates
             <p>Best regards,<br>The Team</p>
         </div>
         <div class='footer'>
-            <p>© {DateTime.UtcNow.Year} All rights reserved.</p>
+            <p>© {DateTime.UtcNow.Year} Progomid Solutions. All rights reserved.</p>
         </div>
     </div>
 </body>
@@ -171,7 +229,7 @@ public static class EmailTemplates
             <p>Best regards,<br>The Team</p>
         </div>
         <div class='footer'>
-            <p>© {DateTime.UtcNow.Year} All rights reserved.</p>
+            <p>© {DateTime.UtcNow.Year} Progomid Solutions. All rights reserved.</p>
         </div>
     </div>
 </body>
@@ -223,7 +281,7 @@ public static class EmailTemplates
             <p>Best regards,<br>The Inventory Team</p>
         </div>
         <div class='footer'>
-            <p>&copy; {DateTime.UtcNow.Year} All rights reserved.</p>
+            <p>&copy; {DateTime.UtcNow.Year} Progomid Solutions. All rights reserved.</p>
         </div>
     </div>
 </body>
@@ -273,7 +331,7 @@ public static class EmailTemplates
             <p>Best regards,<br>The Inventory Team</p>
         </div>
         <div class='footer'>
-            <p>&copy; {DateTime.UtcNow.Year} All rights reserved.</p>
+            <p>&copy; {DateTime.UtcNow.Year} Progomid Solutions. All rights reserved.</p>
         </div>
     </div>
 </body>
@@ -330,7 +388,7 @@ public static class EmailTemplates
             <p>Best regards,<br>The Inventory Team</p>
         </div>
         <div class='footer'>
-            <p>© {DateTime.UtcNow.Year} All rights reserved.</p>
+            <p>© {DateTime.UtcNow.Year} Progomid Solutions. All rights reserved.</p>
         </div>
     </div>
 </body>

@@ -113,7 +113,6 @@ public class AuthController(IAuthService authService) : BaseController
     [HttpPost("reset-password")]
     [AllowAnonymous]
     [ProducesResponseType(200)]
-    [ProducesResponseType(400)]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDTO model)
     {
         var validation = ValidateModelState();
@@ -129,10 +128,39 @@ public class AuthController(IAuthService authService) : BaseController
     [HttpPost("revoke-sessions/{userId}")]
     [Roles(ROLE_TYPE.ADMIN)]
     [ProducesResponseType(200)]
-    [ProducesResponseType(404)]
     public async Task<IActionResult> RevokeUserSessions(string userId)
     {
         var result = await _authService.RevokeUserSessionsAsync(userId);
+        return ComputeResponse(result);
+    }
+
+    /// <summary>
+    /// Verify email address using token sent to email.
+    /// </summary>
+    [HttpGet("verify-email")]
+    [AllowAnonymous]
+    [ProducesResponseType(200)]
+    public async Task<IActionResult> VerifyEmail([FromQuery] string email, [FromQuery] string token)
+    {
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(token))
+            return BadRequest("Email and token are required");
+
+        var result = await _authService.VerifyEmailAsync(email, token);
+        return ComputeResponse(result);
+    }
+
+    /// <summary>
+    /// Resend verification email (response is identical whether email exists or not).
+    /// </summary>
+    [HttpPost("resend-verification")]
+    [AllowAnonymous]
+    [ProducesResponseType(200)]
+    public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationDTO request)
+    {
+        var validation = ValidateModelState();
+        if (validation != null) return validation;
+
+        var result = await _authService.ResendVerificationEmailAsync(request.Email);
         return ComputeResponse(result);
     }
 }

@@ -14,7 +14,6 @@ using KipInventorySystem.Application.Services.Inventory.StockIssues;
 using KipInventorySystem.Application.Services.Inventory.Suppliers;
 using KipInventorySystem.Application.Services.Inventory.TransferRequests;
 using KipInventorySystem.Application.Services.Inventory.Warehouses;
-using KipInventorySystem.Application.Validators.Auth;
 using KipInventorySystem.Shared.Interfaces;
 using KipInventorySystem.Shared.Services;
 using FluentValidation;
@@ -23,6 +22,7 @@ using Mapster;
 using MapsterMapper;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using KipInventorySystem.Application.Services.Auth.Validator;
 
 namespace KipInventorySystem.Application.Extensions;
 
@@ -57,7 +57,7 @@ public static class ServiceCollectionExtension
         services.AddHttpContextAccessor();
         services.AddScoped<IUserContext, UserContext>();
 
-        services.AddValidatorsFromAssemblyContaining<RegisterDTOValidator>();
+        services.AddValidatorsFromAssemblyContaining<RegisterValidator>();
         services.AddFluentValidationAutoValidation();
 
     }

@@ -2,7 +2,7 @@ using System.Data;
 using System.Diagnostics;
 using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Domain.Interfaces;
-using KipInventorySystem.Shared.Responses;
+using KipInventorySystem.Shared.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;

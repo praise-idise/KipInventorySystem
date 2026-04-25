@@ -1,6 +1,5 @@
 using Asp.Versioning;
 using KipInventorySystem.Shared.Models;
-using KipInventorySystem.Shared.Responses;
 using Microsoft.AspNetCore.Mvc;
 
 namespace KipInventorySystem.API.Controllers;

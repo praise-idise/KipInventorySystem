@@ -1,4 +1,3 @@
-using KipInventorySystem.Shared.Responses;
 using KipInventorySystem.Application.Services.Inventory.Products.DTOs;
 using KipInventorySystem.Shared.Models;
 

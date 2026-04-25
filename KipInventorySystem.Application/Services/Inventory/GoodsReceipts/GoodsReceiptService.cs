@@ -5,7 +5,7 @@ using KipInventorySystem.Domain.Entities;
 using KipInventorySystem.Domain.Enums;
 using KipInventorySystem.Domain.Interfaces;
 using KipInventorySystem.Shared.Interfaces;
-using KipInventorySystem.Shared.Responses;
+using KipInventorySystem.Shared.Models;
 using MapsterMapper;
 using Microsoft.Extensions.Logging;
 

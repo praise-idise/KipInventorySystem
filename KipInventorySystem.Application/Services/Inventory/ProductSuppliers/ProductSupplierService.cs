@@ -2,7 +2,7 @@ using KipInventorySystem.Application.Services.Inventory.Common;
 using KipInventorySystem.Application.Services.Inventory.ProductSuppliers.DTOs;
 using KipInventorySystem.Domain.Entities;
 using KipInventorySystem.Domain.Interfaces;
-using KipInventorySystem.Shared.Responses;
+using KipInventorySystem.Shared.Models;
 using Microsoft.Extensions.Logging;
 
 namespace KipInventorySystem.Application.Services.Inventory.ProductSuppliers;
